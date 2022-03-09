@@ -32,6 +32,8 @@ impl<E: Engine> SRS<E> {
     pub fn dummy(d: usize, _: E::Fr, _: E::Fr) -> Self {
         SRS {
             d: d,
+            // creates a d+1 dim vector where all elements equal E::G1Affine::one()
+            // (1 in the pairing group G1, in affine representation)
             g_negative_x: vec![E::G1Affine::one(); d + 1],
             g_positive_x: vec![E::G1Affine::one(); d + 1],
 

@@ -16,6 +16,9 @@ struct Adaptor<'a, E: Engine, CS: ConstraintSystem<E> + 'a> {
     _marker: PhantomData<E>,
 }
 
+// implements bellman::ConstraintSystem<Scalar: PrimeField> trait for Adaptor struct
+// defined above
+// https://docs.rs/bellman/0.11.1/bellman/trait.ConstraintSystem.html
 impl<'a, E: Engine, CS: ConstraintSystem<E> + 'a> bellman::ConstraintSystem<E>
     for Adaptor<'a, E, CS>
 {
@@ -140,6 +143,7 @@ impl<'a, E: Engine, CS: ConstraintSystem<E> + 'a> bellman::ConstraintSystem<E>
 
 struct AdaptorCircuit<T>(T);
 
+// implement sonic::Circuit trait (lib.rs:16) for AdaptorCircuit struct defined above
 impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircuit<C> {
     fn synthesize<CS: ConstraintSystem<E>>(&self, cs: &mut CS) -> Result<(), SynthesisError> {
         let mut adaptor = Adaptor {
@@ -160,18 +164,24 @@ fn main() {
     use pairing::bls12_381::{Bls12, Fr};
     use std::time::{Instant};
 
+    // Fr = prime (scalar) field of the groups
     let srs_x = Fr::from_str("23923").unwrap();
     let srs_alpha = Fr::from_str("23728792").unwrap();
     println!("making srs");
     let start = Instant::now();
-    let srs = SRS::<Bls12>::dummy(830564, srs_x, srs_alpha);
+    // todo why create a dummy srs and not a real one?
+    // srs.rs:32
+    let srs = SRS::<Bls12>::dummy(830564, // d
+        srs_x, srs_alpha);
     println!("done in {:?}", start.elapsed());
 
+    // 'a is a named lifetime (borrowed pointers are required to have lifetimes in impls)
     struct PedersenHashPreimageCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> {
         preimage: Vec<Option<bool>>,
         params: &'a E::Params,
     }
 
+    // trait Clone for PEdersenHashPreimageCircuit
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Clone for PedersenHashPreimageCircuit<'a, E> {
         fn clone(&self) -> Self {
             PedersenHashPreimageCircuit {
@@ -181,6 +191,9 @@ fn main() {
         }
     }
 
+    // trait bellman::Circuit<Scalar: PrimeField> for PedersenHashPreimageCircuit
+    // https://docs.rs/bellman/0.11.1/bellman/trait.Circuit.html
+    // i.e. a circuit that can be syntehsized (with `synthesize` during CRSgen and P)
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine> bellman::Circuit<E> for PedersenHashPreimageCircuit<'a, E> {
         fn synthesize<CS: bellman::ConstraintSystem<E>>(
             self,
@@ -193,10 +206,12 @@ fn main() {
 
             let mut preimage = vec![];
 
+            // for bit in PedersenHashPreimageCircuit's preimage (:180)
             for &bit in self.preimage.iter() {
                 preimage.push(Boolean::from(AllocatedBit::alloc(&mut* cs, bit)?));
             }
 
+            // from sapling_crypto::circuit::
             pedersen_hash::pedersen_hash(
                 &mut* cs, pedersen_hash::Personalization::NoteCommitment, &preimage, self.params)?;
 
