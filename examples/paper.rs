@@ -3,6 +3,8 @@ extern crate pairing;
 extern crate rand;
 extern crate sapling_crypto;
 extern crate sonic;
+// extern crate schnorr;
+extern crate ed25519_dalek;
 
 use pairing::{Engine, Field, PrimeField, CurveProjective};
 use sonic::protocol::*;
@@ -162,16 +164,24 @@ impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircui
 
 fn main() {
     use pairing::bls12_381::{Bls12, Fr};
+    use rand::rngs::OsRng;
+    use ed25519_dalek::{Keypair,Signature,PublicKey};
     use std::time::{Instant};
 
     // Fr = prime (scalar) field of the groups
     let srs_x = Fr::from_str("23923").unwrap();
     let srs_alpha = Fr::from_str("23728792").unwrap();
+
+    // generate signature keys
+    let mut csprng = OsRng{};
+    let keypair: Keypair = Keypair::generate(&mut csprng);
+
     println!("making srs");
     let start = Instant::now();
     // todo why create a dummy srs and not a real one?
     // srs.rs:32
     let srs = SRS::<Bls12>::dummy(830564, // d
+        keypair.public, // cpk
         srs_x, srs_alpha);
     println!("done in {:?}", start.elapsed());
 
