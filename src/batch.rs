@@ -11,6 +11,7 @@
 use pairing::{Engine, Field, CurveAffine, CurveProjective};
 use crate::srs::SRS;
 use crate::util::multiexp;
+use ed25519_dalek::{PublicKey,Signature,Verifier};
 
 // One of the primary functions of the `Batch` abstraction is handling
 // Kate commitment openings:
@@ -45,6 +46,12 @@ pub struct Batch<E: Engine> {
     // to save group operations.
     value: E::Fr,
     g: E::G1Affine,
+
+    // new (UC SE) proof elements
+    // TODO add c
+    pk_l: Vec<PublicKey>,
+    sigma: Vec<Signature>,
+    // TODO add pk_OT, sigma_OT
 }
 
 impl<E: Engine> Batch<E> {
@@ -70,8 +77,11 @@ impl<E: Engine> Batch<E> {
                 tmp.prepare()
             },
 
-            value: E::Fr::zero(),
-            g: srs.g_positive_x[0],
+            value: E::Fr::zero(), // 0
+            g: srs.g_positive_x[0], // g^x^0 = g
+
+            pk_l: vec![],
+            sigma: vec![],
         }
     }
 
@@ -95,7 +105,29 @@ impl<E: Engine> Batch<E> {
         self.value.add_assign(&r);
     }
 
+    pub fn add_pk(&mut self, pk: PublicKey) {
+        self.pk_l.push(pk);
+    }
+
+    pub fn add_signature(&mut self, sig: Signature) {
+        self.sigma.push(sig);
+    }
+
     pub fn check_all(mut self) -> bool {
+        //// check sigma and sigma_ot first, before the sonic proof
+        // verify all the sigmas
+        {
+            let mut i=0;
+            let message: &[u8] = b"TODO This is a dummy message instead of pk_OT";
+            for pk in self.pk_l {
+                // let message = // current pk_OT
+                if !pk.verify(message,&self.sigma[i]).is_ok() { return false }
+            }
+        }
+        // TODO verify sigma_ot
+
+        //// check the sonic proof
+        // type(alpha): Vec<(E::G1Affine, E::Fr)> (line 55)
         self.alpha.push((self.g, self.value));
         // alpha = [(g, 0)]
 

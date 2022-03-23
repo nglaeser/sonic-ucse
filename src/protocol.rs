@@ -6,6 +6,8 @@ use crate::batch::Batch;
 use crate::synthesis::{Backend, SynthesisDriver};
 use crate::{Circuit, SynthesisError, Variable, Coeff};
 use crate::srs::SRS;
+use rand::rngs::OsRng;
+use ed25519_dalek::{Keypair,PublicKey,Signature,Signer};
 
 #[derive(Clone)]
 pub struct SxyAdvice<E: Engine> {
@@ -21,7 +23,10 @@ pub struct Proof<E: Engine> {
     rz: E::Fr,
     rzy: E::Fr,
     z_opening: E::G1Affine,
-    zy_opening: E::G1Affine
+    zy_opening: E::G1Affine,
+    // TODO add c, pk_l, pk_OT, sigma_OT
+    pk_l: PublicKey,
+    sigma: Signature,
 }
 
 pub struct MultiVerifier<E: Engine, C: Circuit<E>, S: SynthesisDriver> {
@@ -192,6 +197,15 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
     )
         where F: FnOnce(E::Fr, E::Fr) -> Option<E::Fr>
     {
+        ////// parse the proof
+        // TODO parse c
+        // let pk_l: PublicKey = proof.pk_l;
+        // let sigma: Signature = proof.sigma;
+        // TODO parse pk_OT, sigma_OT
+        self.batch.add_pk(proof.pk_l);
+        self.batch.add_signature(proof.sigma);
+
+        //// --- Sonic proof ---
         let mut transcript = Transcript::new(&[]);
 
         // zkP1
@@ -633,6 +647,14 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     srs: &SRS<E>
 ) -> Result<Proof<E>, SynthesisError>
 {
+    // US keys
+    let mut csprng = OsRng{};
+    let keypair_l: Keypair = Keypair::generate(&mut csprng);
+    // let sk_l = keypair_l.secret;
+    // let pk_l = keypair_l.public;
+    // TODO OTS keys
+    // TODO UP.Enc
+
     struct Wires<E: Engine> {
         a: Vec<E::Fr>,
         b: Vec<E::Fr>,
@@ -863,8 +885,18 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
         ).into_affine()
     };
 
+    let pk_l: PublicKey = keypair_l.public;
+    // \Sigma.Sign(sk_l, pk_OT) // TODO use actual pk_OT
+    let message: &[u8] = b"TODO This is a dummy message instead of pk_OT";
+    let sigma: Signature = keypair_l.sign(message);
+
     Ok(Proof {
-        r, rz, rzy, t, z_opening, zy_opening
+        // c,
+        r, rz, rzy, t, z_opening, zy_opening, // sonic proof (\pi_\Pi)
+        pk_l,
+        sigma,
+        // pk_OT,
+        // sigma_OT
     })
 
     // zkV3 is in verification algorithm instead
