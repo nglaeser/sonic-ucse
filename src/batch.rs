@@ -27,6 +27,7 @@ use crate::util::multiexp;
 // e([rv] G, [\alpha] H)
 //
 // ... and checking that the result is the identity in the target group.
+// This is checking pcV (?)
 pub struct Batch<E: Engine> {
     alpha_x: Vec<(E::G1Affine, E::Fr)>,
     alpha_x_precomp: <E::G2Affine as CurveAffine>::Prepared,
@@ -96,7 +97,9 @@ impl<E: Engine> Batch<E> {
 
     pub fn check_all(mut self) -> bool {
         self.alpha.push((self.g, self.value));
+        // alpha = [(g, 0)]
 
+        // 
         let alpha_x = multiexp(
             self.alpha_x.iter().map(|x| &x.0),
             self.alpha_x.iter().map(|x| &x.1),
@@ -112,6 +115,7 @@ impl<E: Engine> Batch<E> {
             self.neg_h.iter().map(|x| &x.1),
         ).into_affine().prepare();
 
+        // -x^{max-d}, aka -x^{-d+max}
         let neg_x_n_minus_d = multiexp(
             self.neg_x_n_minus_d.iter().map(|x| &x.0),
             self.neg_x_n_minus_d.iter().map(|x| &x.1),

@@ -181,6 +181,9 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
         self.batch.add_opening_value(advice.szy, random);
     }
 
+    // add proofs to check (see zkV3) to batcher
+    // TODO this needs to also add the extra fields (c, pk_l, sigma, pk_OT, sigma_OT)
+    // to Batch; then check these in Batch.check_all
     pub fn add_proof<F>(
         &mut self,
         proof: &Proof<E>,
@@ -191,33 +194,54 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
     {
         let mut transcript = Transcript::new(&[]);
 
+        // zkP1
         transcript.commit_point(&proof.r);
 
+        // zkV1
         let y: E::Fr = transcript.get_challenge_scalar();
 
+        // zkP2
         transcript.commit_point(&proof.t);
 
+        // zkV2
         let z: E::Fr = transcript.get_challenge_scalar();
 
-        transcript.commit_scalar(&proof.rz);
-        transcript.commit_scalar(&proof.rzy);
+        // zkP3
+        transcript.commit_scalar(&proof.rz); // a?
+        transcript.commit_scalar(&proof.rzy); // b?
 
         let r1: E::Fr = transcript.get_challenge_scalar();
 
-        transcript.commit_point(&proof.z_opening);
-        transcript.commit_point(&proof.zy_opening);
+        transcript.commit_point(&proof.z_opening); // W_a, W_t
+        transcript.commit_point(&proof.zy_opening); // W_b
+        // --- (end parse Sonic proof) ---
 
+        // zkV3
+        // ----
+        // proof.rz:         a
+        // proof.rzy:        b
+        // proof.zy_opening: W_b
+        // proof.z_opening:  W_a, W_t
+        // proof.r:          R
+        // proof.t:          T
+        // ----
+
+        //* b, W_b <- Open(R, yz, r(X,1))
         // First, the easy one. Let's open up proof.r at zy, using proof.zy_opening
         // as the evidence and proof.rzy as the opening.
         {
             let random = transcript.get_challenge_scalar();
             let mut zy = z;
             zy.mul_assign(&y);
-            self.batch.add_opening(proof.zy_opening, random, zy);
-            self.batch.add_commitment_max_n(proof.r, random);
-            self.batch.add_opening_value(proof.rzy, random);
+            //* check pcV(bp, srs, n, R, yz, (b, W_b))
+            self.batch.add_opening(proof.zy_opening, random, zy); // W_b, zy
+            self.batch.add_commitment_max_n(proof.r, random); // R
+            self.batch.add_opening_value(proof.rzy, random); // b
         }
 
+        //// compute t(z,y) = Open(T,z,t(X,y)) ?
+        // or t := a(b+s)-k(y) ? 
+        // = r(z,1)(r(zy,1)+s(z,y))-k(y)
         // Now we need to compute t(z, y) with what we have. Let's compute k(y).
         let mut ky = E::Fr::zero();
         for (exp, input) in self.k_map.iter().zip(Some(E::Fr::one()).iter().chain(inputs.iter())) {
@@ -226,6 +250,7 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
             ky.add_assign(&term);
         }
 
+        //* s = s(z,y), sc <- scP(info, s(X,Y), (z,y))
         // Compute s(z, y)
         let szy = sxy(z, y).unwrap_or_else(|| {
             let mut tmp = SxEval::new(y, self.n);
@@ -239,30 +264,48 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
             // tmp.finalize(y)
         });
 
+        //* t <- a(b+s)-k(y)
         // Finally, compute t(z, y)
-        let mut tzy = proof.rzy;
-        tzy.add_assign(&szy);
-        tzy.mul_assign(&proof.rz);
-        tzy.sub_assign(&ky);
+        let mut tzy = proof.rzy; // b
+        tzy.add_assign(&szy); // +s
+        tzy.mul_assign(&proof.rz); // *a
+        tzy.sub_assign(&ky); // -k(y)
 
         // We open these both at the same time by keeping their commitments
         // linearly independent (using r1).
         {
             let mut random = transcript.get_challenge_scalar();
 
-            self.batch.add_opening(proof.z_opening, random, z);
-            self.batch.add_opening_value(tzy, random);
-            self.batch.add_commitment(proof.t, random);
+            //* t, W_t <- Open(T, z, t(X,y))
+            //* check pcV(bp, srs, n, T, z, (t, W_t))
+            self.batch.add_opening(proof.z_opening, random, z); // both r,t are opened at z
+            self.batch.add_opening_value(tzy, random); // t
+            self.batch.add_commitment(proof.t, random); // T
 
+            // r = r*r1
             random.mul_assign(&r1);
 
-            self.batch.add_opening_value(proof.rz, random);
-            self.batch.add_commitment_max_n(proof.r, random);
+            //* a, W_a <- Open(R, z, r(X,1))
+            //* check pcV(bp, srs, n, R, z, (a, W_a))
+            self.batch.add_opening_value(proof.rz, random); // a
+            self.batch.add_commitment_max_n(proof.r, random); // R
         }
     }
 
+    // zkV3
+    // self: MultiVerifier
     pub fn check_all(self) -> bool {
-        self.batch.check_all()
+        // check all the proofs added to the batcher (either via `add_proof`
+        // or `add_proof_with_advice`)
+        // check scV(info, s(X,Y), (z,y), (s,sc))
+        // check pcV(bp, srs, n, R, z, (a, W_a))
+        // check pcV(bp, srs, n, R, yz, (b, W_b))
+        // check pcV(bp, srs, n, T, z, (t, W_t))
+        // return 1 if all checks pass, else return 0
+
+        // because this is the last line, the fn returns the output of this call
+        self.batch.check_all() // batch.rs:97
+        // TODO also check sigma and sigma_OT
     }
 }
 
@@ -658,6 +701,7 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
 
     let mut transcript = Transcript::new(&[]);
 
+    // zkP1
     let r = multiexp(
         srs.g_positive_x_alpha[(srs.d - 3*n - 1)..].iter(),
         wires.c.iter().rev()
@@ -668,8 +712,10 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
 
     transcript.commit_point(&r);
 
+    // zkV1
     let y: E::Fr = transcript.get_challenge_scalar();
 
+    // 
     let mut rx1 = wires.b;
     rx1.extend(wires.c);
     rx1.reverse();
@@ -720,11 +766,14 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
             .chain_ext(txy[0..4 * n].iter().rev()),
     ).into_affine();
 
+    // zkP2
     transcript.commit_point(&t);
 
+    // zkV2
     let z: E::Fr = transcript.get_challenge_scalar();
     let z_inv = z.inverse().unwrap(); // TODO
 
+    // zkP3
     // TODO: use the faster way to evaluate the polynomials
     let mut rz = E::Fr::zero();
     {
@@ -817,6 +866,8 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     Ok(Proof {
         r, rz, rzy, t, z_opening, zy_opening
     })
+
+    // zkV3 is in verification algorithm instead
 }
 
 

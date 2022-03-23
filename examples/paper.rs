@@ -172,7 +172,7 @@ fn main() {
     let srs_x = Fr::from_str("23923").unwrap();
     let srs_alpha = Fr::from_str("23728792").unwrap();
 
-    // generate signature keys
+    // generate srs signature keys
     let mut csprng = OsRng{};
     let keypair: Keypair = Keypair::generate(&mut csprng);
 
@@ -258,6 +258,7 @@ fn main() {
         }
     }
 
+    // 1 Groth16 proof
     {
         use pairing::{CurveAffine};
         use pairing::bls12_381::{G1Affine, G2Affine};
@@ -285,6 +286,7 @@ fn main() {
         println!("done in {:?}", start.elapsed());
     }
 
+    // 100 Groth16 proofs
     {
         use sonic::util::multiexp;
         use pairing::{CurveAffine};
@@ -459,8 +461,11 @@ fn main() {
             let start = Instant::now();
             {
                 for _ in 0..1 {
+                    // proof from line 442
                     verifier.add_proof(&proof, &[], |_, _| None);
                 }
+                // protocol.rs:294
+                // Note: just running verification on the proof itself (not crs)
                 assert_eq!(verifier.check_all(), true); // TODO
             }
             println!("done in {:?}", start.elapsed());
