@@ -8,6 +8,9 @@ use crate::{Circuit, SynthesisError, Variable, Coeff};
 use crate::srs::SRS;
 use rand::rngs::OsRng;
 use ed25519_dalek::{Keypair,PublicKey,Signature,Signer};
+use lamport_sigs;
+use ring::digest::{Algorithm, SHA256, SHA512};
+// static DIGEST_256: &Algorithm = &SHA256; // TODO decide which SHA to use
 
 #[derive(Clone)]
 pub struct SxyAdvice<E: Engine> {
@@ -24,9 +27,11 @@ pub struct Proof<E: Engine> {
     rzy: E::Fr,
     z_opening: E::G1Affine,
     zy_opening: E::G1Affine,
-    // TODO add c, pk_l, pk_OT, sigma_OT
+    // TODO add c
     pk_l: PublicKey,
     sigma: Signature,
+    pk_ot: lamport_sigs::PublicKey,
+    sigma_ot: Result<Vec<Vec<u8>>, &'static str>,
 }
 
 pub struct MultiVerifier<E: Engine, C: Circuit<E>, S: SynthesisDriver> {
@@ -187,8 +192,8 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
     }
 
     // add proofs to check (see zkV3) to batcher
-    // TODO this needs to also add the extra fields (c, pk_l, sigma, pk_OT, sigma_OT)
-    // to Batch; then check these in Batch.check_all
+    // UCSE: also add the extra fields to Batch, and check everything in 
+    // Batch.check_all
     pub fn add_proof<F>(
         &mut self,
         proof: &Proof<E>,
@@ -198,12 +203,12 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
         where F: FnOnce(E::Fr, E::Fr) -> Option<E::Fr>
     {
         ////// parse the proof
+        //// ---additional fields for UCSE---
         // TODO parse c
-        // let pk_l: PublicKey = proof.pk_l;
-        // let sigma: Signature = proof.sigma;
-        // TODO parse pk_OT, sigma_OT
         self.batch.add_pk(proof.pk_l);
         self.batch.add_signature(proof.sigma);
+        self.batch.add_ot_pk(proof.pk_ot.clone()); // TODO clone()?
+        self.batch.add_ot_signature(proof.sigma_ot.clone());
 
         //// --- Sonic proof ---
         let mut transcript = Transcript::new(&[]);
@@ -319,7 +324,6 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
 
         // because this is the last line, the fn returns the output of this call
         self.batch.check_all() // batch.rs:97
-        // TODO also check sigma and sigma_OT
     }
 }
 
@@ -650,9 +654,8 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     // US keys
     let mut csprng = OsRng{};
     let keypair_l: Keypair = Keypair::generate(&mut csprng);
-    // let sk_l = keypair_l.secret;
-    // let pk_l = keypair_l.public;
-    // TODO OTS keys
+    let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
+    let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
     // TODO UP.Enc
 
     struct Wires<E: Engine> {
@@ -886,17 +889,21 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     };
 
     let pk_l: PublicKey = keypair_l.public;
-    // \Sigma.Sign(sk_l, pk_OT) // TODO use actual pk_OT
-    let message: &[u8] = b"TODO This is a dummy message instead of pk_OT";
-    let sigma: Signature = keypair_l.sign(message);
+    // \Sigma.Sign(sk_l, pk_OT)
+    let pk_ot_message: &[u8] = &pk_ot.to_bytes();
+    let sigma: Signature = keypair_l.sign(pk_ot_message);
+
+    let message: &[u8] = b"TODO This is a dummy message instead of pi,x,c,pk_l,sigma";
+    let sigma_ot = sk_ot.sign(message);
+    // TODO init c
 
     Ok(Proof {
-        // c,
+        // c, // TODO
         r, rz, rzy, t, z_opening, zy_opening, // sonic proof (\pi_\Pi)
         pk_l,
         sigma,
-        // pk_OT,
-        // sigma_OT
+        pk_ot,
+        sigma_ot
     })
 
     // zkV3 is in verification algorithm instead

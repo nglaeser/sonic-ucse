@@ -51,7 +51,8 @@ pub struct Batch<E: Engine> {
     // TODO add c
     pk_l: Vec<PublicKey>,
     sigma: Vec<Signature>,
-    // TODO add pk_OT, sigma_OT
+    pk_ot: Vec<lamport_sigs::PublicKey>,
+    sigma_ot: Vec<Result<Vec<Vec<u8>>, &'static str>>,
 }
 
 impl<E: Engine> Batch<E> {
@@ -82,6 +83,9 @@ impl<E: Engine> Batch<E> {
 
             pk_l: vec![],
             sigma: vec![],
+            pk_ot: vec![],
+            sigma_ot: vec![],
+            // TODO add c
         }
     }
 
@@ -113,18 +117,35 @@ impl<E: Engine> Batch<E> {
         self.sigma.push(sig);
     }
 
+    pub fn add_ot_pk(&mut self, pk: lamport_sigs::PublicKey) {
+        self.pk_ot.push(pk);
+    }
+
+    pub fn add_ot_signature(&mut self, sig: Result<Vec<Vec<u8>>, &'static str>) {
+        self.sigma_ot.push(sig);
+    }
+
     pub fn check_all(mut self) -> bool {
         //// check sigma and sigma_ot first, before the sonic proof
         // verify all the sigmas
         {
             let mut i=0;
-            let message: &[u8] = b"TODO This is a dummy message instead of pk_OT";
             for pk in self.pk_l {
-                // let message = // current pk_OT
+                let message: &[u8] = &self.pk_ot[i].to_bytes();
                 if !pk.verify(message,&self.sigma[i]).is_ok() { return false }
+                i+=1;
+            }
+            let message: &[u8] = b"TODO This is a dummy message instead of pi,x,c,pk_l,sigma";
+            for pk in self.pk_ot {
+                // let message: &[u8] = // TODO correct message
+                // if !&self.sigma_ot[i].is_ok_and(|&x| pk.verify_signature(x,message)) { return false }
+                let sigma_ot_valid = match &self.sigma_ot[i] {
+                    Ok(sig) => pk.verify_signature(sig,message),
+                    Err(error) => false
+                };
+                if !sigma_ot_valid { return false }
             }
         }
-        // TODO verify sigma_ot
 
         //// check the sonic proof
         // type(alpha): Vec<(E::G1Affine, E::Fr)> (line 55)
