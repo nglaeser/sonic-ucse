@@ -1,9 +1,14 @@
 extern crate sonic;
-extern crate ed25519_dalek;
 
 use sonic::protocol::*;
+use sonic::kupke::{KeyUpdate,SKeyUpdate};
 use lamport_sigs;
 use ring::digest::{Algorithm, SHA256, SHA512};
+use curv::BigInt;
+use elgamal::{
+    rfc7919_groups::SupportedGroups, ElGamal, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,
+    ElGamalPublicKey,ExponentElGamal,ElGamalCiphertext,ElGamalError
+};
 
 fn main() {
     use rand::rngs::OsRng;
@@ -12,7 +17,6 @@ fn main() {
 
     println!("Testing signature schemes");
     println!("-------------------------");
-    // keygen
     print!("KeyGen...");
     let mut csprng = OsRng{};
     let keypair_l: Keypair = Keypair::generate(&mut csprng);
@@ -30,13 +34,38 @@ fn main() {
     let sigma_ot = sk_ot.sign(proof_str);
     println!("done");
 
-    println!("Verify...");
-    println!("- EdDSA: {}", pk_l.verify(pk_ot_message,&sigma).is_ok());
-    // if !&self.sigma_ot[i].is_ok_and(|&x| pk.verify_signature(x,message)) { return false }
+    print!("Verify...");
+    assert!(pk_l.verify(pk_ot_message,&sigma).is_ok());
     let sigma_ot_valid = match sigma_ot {
         Ok(sig) => pk_ot.verify_signature(&sig,proof_str),
         Err(error) => false
     };
-    println!("- OT: {}", sigma_ot_valid);
+    assert!(sigma_ot_valid);
+    println!("done");
+
+    println!("\nTesting key-updatable PKE");
+    println!("-------------------------");
+    print!("Setup...");
+    let lambda: usize = 128;
+    let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
+    println!("done");
+
+    print!("KeyGen...");
+    let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
+    println!("done");
+
+    print!("Encrypt...");
+    let message = BigInt::from(13);
+    let ctext: ElGamalCiphertext = ElGamal::encrypt(&message, &keypair_pke.pk).unwrap();
+    println!("done");
+
+    print!("Decrypt...");
+    let ptext: Result<BigInt, ElGamalError> = ElGamal::decrypt(&ctext, &keypair_pke.sk);
+    assert_eq!(message, ptext.unwrap());
+    println!("done");
+
+    print!("Update...");
+    let (pk_up, up_sk) = keypair_pke.pk.upk();
+    let sk_up: ElGamalPrivateKey = keypair_pke.sk.usk(up_sk);
     println!("done");
 }

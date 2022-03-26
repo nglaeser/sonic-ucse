@@ -1,0 +1,3 @@
+[submodule "rust-elgamal"]
+	path = rust-elgamal
+	url = https://github.com/ZenGo-X/rust-elgamal.git
