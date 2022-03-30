@@ -11,6 +11,7 @@
 use pairing::{Engine, Field, CurveAffine, CurveProjective};
 use crate::srs::SRS;
 use crate::util::multiexp;
+use crate::kupke;
 use ed25519_dalek::{PublicKey,Signature,Verifier};
 
 // One of the primary functions of the `Batch` abstraction is handling
@@ -48,7 +49,7 @@ pub struct Batch<E: Engine> {
     g: E::G1Affine,
 
     // new (UC SE) proof elements
-    // TODO add c
+    c: Vec<elgamal::ElGamalCiphertext>,
     pk_l: Vec<PublicKey>,
     sigma: Vec<Signature>,
     pk_ot: Vec<lamport_sigs::PublicKey>,
@@ -85,7 +86,7 @@ impl<E: Engine> Batch<E> {
             sigma: vec![],
             pk_ot: vec![],
             sigma_ot: vec![],
-            // TODO add c
+            c: vec![],
         }
     }
 
@@ -125,6 +126,10 @@ impl<E: Engine> Batch<E> {
         self.sigma_ot.push(sig);
     }
 
+    pub fn add_ctext(&mut self, ctext: elgamal::ElGamalCiphertext) {
+        self.c.push(ctext);
+    }
+
     pub fn check_all(mut self) -> bool {
         //// check sigma and sigma_ot first, before the sonic proof
         // verify all the sigmas
@@ -135,9 +140,9 @@ impl<E: Engine> Batch<E> {
                 if !pk.verify(message,&self.sigma[i]).is_ok() { return false }
                 i+=1;
             }
-            let message: &[u8] = b"TODO This is a dummy message instead of pi,x,c,pk_l,sigma";
+            let message: &[u8] = b"TODO NG This is a dummy message instead of pi,x,c,pk_l,sigma";
             for pk in self.pk_ot {
-                // let message: &[u8] = // TODO correct message
+                // let message: &[u8] = // TODO NG correct message
                 // if !&self.sigma_ot[i].is_ok_and(|&x| pk.verify_signature(x,message)) { return false }
                 let sigma_ot_valid = match &self.sigma_ot[i] {
                     Ok(sig) => pk.verify_signature(sig,message),

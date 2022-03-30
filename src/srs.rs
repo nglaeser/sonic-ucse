@@ -1,5 +1,6 @@
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, Wnaf};
 use ed25519_dalek::PublicKey;
+use elgamal::ElGamalPublicKey;
 
 pub struct SRS<E: Engine> {
     pub d: usize,
@@ -29,10 +30,12 @@ pub struct SRS<E: Engine> {
     pub h_positive_x_alpha: Vec<E::G2Affine>,
 
     pub cpk: PublicKey,
+    pub pk: ElGamalPublicKey,
 }
 
 impl<E: Engine> SRS<E> {
-    pub fn dummy(d: usize, cpk: PublicKey, _: E::Fr, _: E::Fr) -> Self {
+    pub fn dummy(d: usize, cpk: PublicKey, pk: ElGamalPublicKey, _: E::Fr, _: E::Fr) 
+    -> Self {
         SRS {
             d: d,
             // creates a d+1 dim vector where all elements equal E::G1Affine::one()
@@ -50,10 +53,12 @@ impl<E: Engine> SRS<E> {
             h_positive_x_alpha: vec![E::G2Affine::one(); d + 1],
 
             cpk: cpk,
+            pk: pk,
         }
     }
 
-    pub fn new(d: usize, cpk: PublicKey, x: E::Fr, alpha: E::Fr) -> Self {
+    pub fn new(d: usize, cpk: PublicKey, pk: ElGamalPublicKey, x: E::Fr, alpha: E::Fr) 
+    -> Self {
         let mut g1 = Wnaf::new();
         let mut g1 = g1.base(E::G1::one(), d * 4);
         let mut g2 = Wnaf::new();
@@ -98,6 +103,7 @@ impl<E: Engine> SRS<E> {
             h_positive_x_alpha: table(alpha, x, d + 1, &mut g2),
 
             cpk: cpk,
+            pk: pk,
         }
     }
 }

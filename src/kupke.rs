@@ -17,13 +17,13 @@ impl KeyUpdate for ElGamalPublicKey {
 }
 
 pub trait SKeyUpdate {
-    fn usk(&self, up_sk: SKUpdate) -> Self;
+    fn usk(&self, up_sk: &SKUpdate) -> Self;
 }
 impl SKeyUpdate for ElGamalPrivateKey {
-    fn usk(&self, up_sk: SKUpdate) -> Self {
+    fn usk(&self, up_sk: &SKUpdate) -> Self {
         ElGamalPrivateKey { 
             pp: self.pp.clone(),
-            x: BigInt::mod_add(&self.x, &up_sk.up, &self.pp.q),
+            x: BigInt::mod_mul(&self.x, &up_sk.up, &self.pp.q),
         }
     }
 }

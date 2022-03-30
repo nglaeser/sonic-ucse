@@ -9,9 +9,11 @@ extern crate ed25519_dalek;
 use pairing::{Engine, Field, PrimeField, CurveProjective};
 use sonic::protocol::*;
 use sonic::srs::SRS;
-use sonic::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff};
+use sonic::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff, BigIntable};
 use sonic::synthesis::*;
 use std::marker::PhantomData;
+use curv::BigInt;
+use elgamal::{ElGamalKeyPair,ElGamalPP};
 
 struct Adaptor<'a, E: Engine, CS: ConstraintSystem<E> + 'a> {
     cs: &'a mut CS,
@@ -161,6 +163,11 @@ impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircui
         Ok(())
     }
 }
+impl<C: BigIntable> BigIntable for AdaptorCircuit<C> {
+    fn toBigInt(&self) -> curv::BigInt {
+        self.0.toBigInt()
+    }
+}
 
 fn main() {
     use pairing::bls12_381::{Bls12, Fr};
@@ -174,14 +181,20 @@ fn main() {
 
     // generate srs signature keys
     let mut csprng = OsRng{};
-    let keypair: Keypair = Keypair::generate(&mut csprng);
+    let keypair_sig: Keypair = Keypair::generate(&mut csprng);
+
+    // generate srs KU-PKE keys
+    let lambda: usize = 128;
+    let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
+    let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
 
     println!("making srs");
     let start = Instant::now();
-    // todo why create a dummy srs and not a real one?
+    // TODO NG why create a dummy srs and not a real one?
     // srs.rs:32
     let srs = SRS::<Bls12>::dummy(830564, // d
-        keypair.public, // cpk
+        keypair_sig.public, // cpk
+        keypair_pke.pk, // pk
         srs_x, srs_alpha);
     println!("done in {:?}", start.elapsed());
 
@@ -234,6 +247,27 @@ fn main() {
         preimage: Vec<Option<bool>>,
     }
 
+    impl BigIntable for SHA256PreimageCircuit {
+        fn toBigInt(&self) -> curv::BigInt {
+            let preimage = &self.preimage;
+            let len = preimage.len();
+
+            let mut slice = vec![Some(false);64];
+            // let mut out = curv::From::<u64>::from(0);
+            let mut out = curv::BigInt::from(0);
+            for i in 0..(len/64) {
+                let start = i*64;
+                let end = (i+1)*64;
+                slice.copy_from_slice(&preimage[start..end]);
+
+                // convert slice to u64
+                let tmp: u64 = preimage.iter().rev().fold(0,
+                    |acc, &b| (acc << 1) + b.unwrap() as u64);
+                out = out + tmp;
+            }
+            out
+        }
+    }
     impl<E: Engine> bellman::Circuit<E> for SHA256PreimageCircuit {
         fn synthesize<CS: bellman::ConstraintSystem<E>>(
             self,

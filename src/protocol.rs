@@ -1,22 +1,66 @@
-use pairing::{Engine, Field, CurveProjective};
+use pairing::{Engine, Field, CurveAffine, CurveProjective, PrimeField};
 use std::marker::PhantomData;
 use merlin::{Transcript};
 use crate::util::*;
 use crate::batch::Batch;
 use crate::synthesis::{Backend, SynthesisDriver};
-use crate::{Circuit, SynthesisError, Variable, Coeff};
+use crate::{Circuit, SynthesisError, Variable, Coeff, BigIntable};
 use crate::srs::SRS;
 use rand::rngs::OsRng;
 use ed25519_dalek::{Keypair,PublicKey,Signature,Signer};
 use lamport_sigs;
 use ring::digest::{Algorithm, SHA256, SHA512};
-// static DIGEST_256: &Algorithm = &SHA256; // TODO decide which SHA to use
+// static DIGEST_256: &Algorithm = &SHA256; // TODO NG decide which SHA to use
+use elgamal::{ElGamalCiphertext,ElGamal};
+use curv::BigInt;
+use pairing::bls12_381::Fr;
+use bls12_381::{G1Affine,G2Affine,Scalar};
+use group::{UncompressedEncoding,prime::PrimeCurveAffine};
+use std::convert::TryInto;
 
 #[derive(Clone)]
 pub struct SxyAdvice<E: Engine> {
     s: E::G1Affine,
     opening: E::G1Affine,
     szy: E::Fr,
+}
+
+#[derive(Clone)]
+pub struct SonicProof<A,F> {
+    r: A,
+    t: A,
+    rz: F,
+    rzy: F,
+    z_opening: A,
+    zy_opening: A,
+}
+impl<A: PrimeCurveAffine + UncompressedEncoding, F: group::ff::PrimeField> SonicProof<A,F> {
+    pub fn dummy() -> Self {
+        SonicProof {
+            r : A::identity(),
+            rz : F::zero(),
+            rzy : F::zero(),
+            t : A::identity(),
+            z_opening : A::identity(),
+            zy_opening : A::identity(),
+        }
+    }
+    pub fn to_bytes(&self) -> [u8; 448] {
+        let r_bytes = &self.r.to_uncompressed(); // output is guaranteed to be 96 for Bls::G1Affine
+        let t_bytes = &self.t.to_uncompressed();
+        let rz_bytes = &self.rz.to_repr(); // 32 bytes for Bls::Scalar
+        let rzy_bytes = &self.rzy.to_repr();
+        let z_opening_bytes = &self.z_opening.to_uncompressed();
+        let zy_opening_bytes = &self.zy_opening.to_uncompressed();
+        let mut res: Vec<u8> = Vec::<u8>::with_capacity(448);
+        res.extend_from_slice(r_bytes.as_ref());
+        res.extend_from_slice(t_bytes.as_ref());
+        res.extend_from_slice(rz_bytes.as_ref());
+        res.extend_from_slice(rzy_bytes.as_ref());
+        res.extend_from_slice(z_opening_bytes.as_ref());
+        res.extend_from_slice(zy_opening_bytes.as_ref());
+        res[0..448].try_into().expect("slice with incorrect length") // turn vector into slice since full length is known
+    }
 }
 
 #[derive(Clone)]
@@ -27,7 +71,7 @@ pub struct Proof<E: Engine> {
     rzy: E::Fr,
     z_opening: E::G1Affine,
     zy_opening: E::G1Affine,
-    // TODO add c
+    c: elgamal::ElGamalCiphertext,
     pk_l: PublicKey,
     sigma: Signature,
     pk_ot: lamport_sigs::PublicKey,
@@ -204,7 +248,7 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
     {
         ////// parse the proof
         //// ---additional fields for UCSE---
-        // TODO parse c
+        self.batch.add_ctext(proof.c.clone());
         self.batch.add_pk(proof.pk_l);
         self.batch.add_signature(proof.sigma);
         self.batch.add_ot_pk(proof.pk_ot.clone()); // TODO clone()?
@@ -646,17 +690,18 @@ pub fn create_advice<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     }
 }
 
-pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
-    circuit: &C,
+pub fn create_proof<E: Engine,C: BigIntable + Circuit<E>, S: SynthesisDriver>(
+    circuit: &C, // witness
     srs: &SRS<E>
-) -> Result<Proof<E>, SynthesisError>
+) -> Result<Proof<E>, SynthesisError> where 
+<E as Engine>::G1Affine: UncompressedEncoding,
+<E as Engine>::Fr: PrimeField
 {
     // US keys
     let mut csprng = OsRng{};
     let keypair_l: Keypair = Keypair::generate(&mut csprng);
     let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
     let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
-    // TODO UP.Enc
 
     struct Wires<E: Engine> {
         a: Vec<E::Fr>,
@@ -893,12 +938,20 @@ pub fn create_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     let pk_ot_message: &[u8] = &pk_ot.to_bytes();
     let sigma: Signature = keypair_l.sign(pk_ot_message);
 
-    let message: &[u8] = b"TODO This is a dummy message instead of pi,x,c,pk_l,sigma";
-    let sigma_ot = sk_ot.sign(message);
-    // TODO init c
+    // encrypt the witness (circuit C)
+    let message: curv::BigInt = circuit.toBigInt();
+    // let message = curv::BigInt::from(0);
+    let c: elgamal::ElGamalCiphertext = elgamal::ElGamal::encrypt(&message, &srs.pk).unwrap();
+
+    let sonic_proof = SonicProof {
+        r, rz, rzy, t, z_opening, zy_opening,
+    };
+    let message2: &[u8] = b"TODO NG This is a dummy message instead of pi,x,c,pk_l,sigma";
+    // let message2: &[u8] = sonic_proof.to_bytes();
+    let sigma_ot = sk_ot.sign(message2);
 
     Ok(Proof {
-        // c, // TODO
+        c,
         r, rz, rzy, t, z_opening, zy_opening, // sonic proof (\pi_\Pi)
         pk_l,
         sigma,

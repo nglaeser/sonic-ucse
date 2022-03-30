@@ -1,5 +1,6 @@
 use pairing::{Engine, Field};
 use std::ops::{Add, Neg, Sub};
+use curv::BigInt;
 
 pub mod srs;
 pub mod util;
@@ -12,6 +13,10 @@ pub mod kupke;
 pub enum SynthesisError {
     AssignmentMissing,
     Violation,
+}
+
+pub trait BigIntable {
+    fn toBigInt(&self) -> curv::BigInt;
 }
 
 pub trait Circuit<E: Engine> {
