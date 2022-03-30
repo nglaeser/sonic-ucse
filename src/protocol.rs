@@ -4,7 +4,7 @@ use merlin::{Transcript};
 use crate::util::*;
 use crate::batch::Batch;
 use crate::synthesis::{Backend, SynthesisDriver};
-use crate::{Circuit, SynthesisError, Variable, Coeff, BigIntable};
+use crate::{Circuit, SynthesisError, Variable, Coeff, BigIntable, Statement};
 use crate::srs::SRS;
 use rand::rngs::OsRng;
 use ed25519_dalek::{Keypair,PublicKey,Signature,Signer};
@@ -15,8 +15,9 @@ use elgamal::{ElGamalCiphertext,ElGamal};
 use curv::BigInt;
 use pairing::bls12_381::Fr;
 use bls12_381::{G1Affine,G2Affine,Scalar};
-use group::{UncompressedEncoding,prime::PrimeCurveAffine};
+use group::prime::{PrimeCurveAffine};
 use std::convert::TryInto;
+use group::UncompressedEncoding;
 
 #[derive(Clone)]
 pub struct SxyAdvice<E: Engine> {
@@ -690,7 +691,7 @@ pub fn create_advice<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     }
 }
 
-pub fn create_proof<E: Engine,C: BigIntable + Circuit<E>, S: SynthesisDriver>(
+pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: SynthesisDriver>(
     circuit: &C, // witness
     srs: &SRS<E>
 ) -> Result<Proof<E>, SynthesisError> where 

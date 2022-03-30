@@ -9,7 +9,7 @@ extern crate ed25519_dalek;
 use pairing::{Engine, Field, PrimeField, CurveProjective};
 use sonic::protocol::*;
 use sonic::srs::SRS;
-use sonic::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff, BigIntable};
+use sonic::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff, BigIntable, Statement};
 use sonic::synthesis::*;
 use std::marker::PhantomData;
 use curv::BigInt;
@@ -168,6 +168,11 @@ impl<C: BigIntable> BigIntable for AdaptorCircuit<C> {
         self.0.toBigInt()
     }
 }
+impl<C: Statement> Statement for AdaptorCircuit<C> {
+    fn get_statement(&self) -> &[u8] {
+        self.0.get_statement()
+    }
+}
 
 fn main() {
     use pairing::bls12_381::{Bls12, Fr};
@@ -247,6 +252,11 @@ fn main() {
         preimage: Vec<Option<bool>>,
     }
 
+    impl Statement for SHA256PreimageCircuit {
+        fn get_statement(&self) -> &[u8] {
+            b"fake statement"
+        }
+    }
     impl BigIntable for SHA256PreimageCircuit {
         fn toBigInt(&self) -> curv::BigInt {
             let preimage = &self.preimage;
@@ -308,6 +318,7 @@ fn main() {
 
         let alphabeta = <Bls12 as Engine>::pairing(alpha, beta);
 
+        // verifying a dummy proof only
         println!("verifying an idealized groth16 proof");
         let start = Instant::now();
         assert!(<Bls12 as Engine>::final_exponentiation(

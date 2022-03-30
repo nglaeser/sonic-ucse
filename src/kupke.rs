@@ -1,5 +1,6 @@
 use curv::BigInt;
 use curv::arithmetic::traits::{Modulo,Samplable};
+use curv::arithmetic::Converter;
 use elgamal::{
     rfc7919_groups::SupportedGroups, ElGamal, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,
     ElGamalPublicKey,ExponentElGamal,ElGamalCiphertext,
@@ -13,6 +14,17 @@ impl KeyUpdate for ElGamalPublicKey {
         let up_sk: SKUpdate = SKUpdate::random(&self.pp);
         let pk_up: ElGamalPublicKey = self.exp(&up_sk.up);
         (pk_up, up_sk)
+    }
+}
+
+pub trait Serialize {
+    fn to_bytes(&self) -> Vec<u8>;
+}
+impl Serialize for ElGamalCiphertext {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut res: Vec<u8> = self.c1.to_bytes();
+        res.append(&mut self.c2.to_bytes());
+        res
     }
 }
 

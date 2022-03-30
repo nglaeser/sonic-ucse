@@ -1,15 +1,16 @@
 extern crate sonic;
 
 use sonic::protocol::*;
-use sonic::kupke::{KeyUpdate,SKeyUpdate};
+use sonic::kupke::{KeyUpdate,SKeyUpdate,Serialize};
 use lamport_sigs;
-use ring::digest::{Algorithm, SHA256, SHA512};
+use ring::digest::SHA256;
 use curv::BigInt;
 use curv::arithmetic::traits::Modulo;
 use elgamal::{
-    rfc7919_groups::SupportedGroups, ElGamal, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,
-    ElGamalPublicKey,ExponentElGamal,ElGamalCiphertext,ElGamalError
+    ElGamal, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,ElGamalCiphertext,ElGamalError
 };
+// TODO NG fix differences between bls12_381 and pairing::bls12_381
+// (upgrade paper code to use bls12_381 instead of the older pairing::bls12_381)
 // use pairing::bls12_381::{Bls12,G1Affine,G2Affine,Fr,Scalar};
 use pairing::bls12_381::Fr;
 use bls12_381::{G1Affine,G2Affine,Scalar};
@@ -22,7 +23,7 @@ fn main() {
 
     use rand::rngs::OsRng;
     use ed25519_dalek::{Keypair,Signature,PublicKey,Signer,Verifier};
-    use std::time::{Instant};
+    // use std::time::{Instant};
 
     println!("\nTesting key-updatable PKE");
     println!("-------------------------");
@@ -58,7 +59,7 @@ fn main() {
     println!("\nTurning Sonic proof into u8");
     println!("-------------------------");
     let dummyproof = SonicProof::<G1Affine, Scalar>::dummy();
-    let proof_bytes: &[u8] = &dummyproof.to_bytes();
+    let sonic_bytes: &[u8] = &dummyproof.to_bytes();
 
     println!("Testing signature schemes");
     println!("-------------------------");
@@ -76,17 +77,30 @@ fn main() {
     let sigma: Signature = keypair_l.sign(pk_ot_message);
 
     // \Sigma_OT.Sign(sk_ot, pi||x||c||pk_l||sigma)
-    // proof_str, x?, ctext_up, pk_l, sigma
-    let proof_str: &[u8] = proof_bytes;
-    // let proof_str: &[u8] = b"TODO NG This is a dummy message instead of pi,x,c,pk_l,sigma";
-    let sigma_ot = sk_ot.sign(proof_str);
+    let x: &[u8] = b"fake statement";
+    let mut c_bytes: Vec<u8> = ctext_up.to_bytes();
+    let pk_l_bytes: [u8; 32] = pk_l.to_bytes();
+    let sigma_bytes: [u8; 64] = sigma.to_bytes();
+
+    let mut res: Vec<u8> = Vec::<u8>::with_capacity(448);
+    res.extend_from_slice(sonic_bytes);
+    res.extend_from_slice(x);
+    res.append(&mut c_bytes);
+    res.extend_from_slice(&pk_l_bytes);
+    res.extend_from_slice(&sigma_bytes);
+
+    let proof_bytes: &[u8] = res[0..res.len()].try_into().expect("slice with incorrect length");
+    // let proof_bytes: &[u8] = sonic_bytes;
+    // let proof_bytes: &[u8] = b"TODO NG This is a dummy message instead of pi,x,c,pk_l,sigma";
+
+    let sigma_ot = sk_ot.sign(proof_bytes);
     println!("done");
 
     print!("Verify...");
     assert!(pk_l.verify(pk_ot_message,&sigma).is_ok());
     let sigma_ot_valid = match sigma_ot {
-        Ok(sig) => pk_ot.verify_signature(&sig,proof_str),
-        Err(error) => false
+        Ok(sig) => pk_ot.verify_signature(&sig,proof_bytes),
+        Err(_) => false
     };
     assert!(sigma_ot_valid);
     println!("done");

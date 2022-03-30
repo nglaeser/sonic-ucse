@@ -18,6 +18,9 @@ pub enum SynthesisError {
 pub trait BigIntable {
     fn toBigInt(&self) -> curv::BigInt;
 }
+pub trait Statement {
+    fn get_statement(&self) -> &[u8];
+}
 
 pub trait Circuit<E: Engine> {
     fn synthesize<CS: ConstraintSystem<E>>(&self, cs: &mut CS) -> Result<(), SynthesisError>;
