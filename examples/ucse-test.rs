@@ -13,7 +13,8 @@ use elgamal::{
 // (upgrade paper code to use bls12_381 instead of the older pairing::bls12_381)
 // use pairing::bls12_381::{Bls12,G1Affine,G2Affine,Fr,Scalar};
 use pairing::bls12_381::Fr;
-use bls12_381::{G1Affine,G2Affine,Scalar};
+// use bls12_381::{G1Affine,G2Affine,Scalar};
+use pairing::bls12_381::{G1Affine,G2Affine};
 use pairing::{Engine,CurveAffine,Field};
 use group::{UncompressedEncoding,ff::PrimeField};
 use std::convert::TryInto;
@@ -58,7 +59,8 @@ fn main() {
 
     println!("\nTurning Sonic proof into u8");
     println!("-------------------------");
-    let dummyproof = SonicProof::<G1Affine, Scalar>::dummy();
+    // let dummyproof = SonicProof::<G1Affine, Scalar>::dummy();
+    let dummyproof = SonicProof::<G1Affine, Fr>::dummy();
     let sonic_bytes: &[u8] = &dummyproof.to_bytes();
 
     println!("Testing signature schemes");

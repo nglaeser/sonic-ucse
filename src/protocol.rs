@@ -13,11 +13,8 @@ use ring::digest::{Algorithm, SHA256, SHA512};
 // static DIGEST_256: &Algorithm = &SHA256; // TODO NG decide which SHA to use
 use elgamal::{ElGamalCiphertext,ElGamal};
 use curv::BigInt;
-use pairing::bls12_381::Fr;
-use bls12_381::{G1Affine,G2Affine,Scalar};
 use group::prime::{PrimeCurveAffine};
 use std::convert::TryInto;
-use group::UncompressedEncoding;
 
 #[derive(Clone)]
 pub struct SxyAdvice<E: Engine> {
@@ -35,32 +32,45 @@ pub struct SonicProof<A,F> {
     z_opening: A,
     zy_opening: A,
 }
-impl<A: PrimeCurveAffine + UncompressedEncoding, F: group::ff::PrimeField> SonicProof<A,F> {
+impl<A: CurveAffine, F: pairing::PrimeField> SonicProof<A,F> {
+// impl<A: PrimeCurveAffine, F: group::ff::PrimeField> SonicProof<A,F> {
+// impl<A: PrimeCurveAffine + UncompressedEncoding, F: group::ff::PrimeField> SonicProof<A,F> {
+    const rz_len: u32 = F::NUM_BITS/8;
     pub fn dummy() -> Self {
         SonicProof {
-            r : A::identity(),
+            r : A::one(),
             rz : F::zero(),
             rzy : F::zero(),
-            t : A::identity(),
-            z_opening : A::identity(),
-            zy_opening : A::identity(),
+            t : A::one(),
+            z_opening : A::one(),
+            zy_opening : A::one(),
         }
     }
-    pub fn to_bytes(&self) -> [u8; 448] {
-        let r_bytes = &self.r.to_uncompressed(); // output is guaranteed to be 96 for Bls::G1Affine
-        let t_bytes = &self.t.to_uncompressed();
-        let rz_bytes = &self.rz.to_repr(); // 32 bytes for Bls::Scalar
-        let rzy_bytes = &self.rzy.to_repr();
-        let z_opening_bytes = &self.z_opening.to_uncompressed();
-        let zy_opening_bytes = &self.zy_opening.to_uncompressed();
-        let mut res: Vec<u8> = Vec::<u8>::with_capacity(448);
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let r_bytes = &self.r.into_uncompressed();
+        let t_bytes = &self.t.into_uncompressed();
+        let rz_repr = &self.rz.into_repr();
+        let mut rz_bytes: Vec<u8> = vec![];
+        for rz in rz_repr.as_ref() {
+            rz_bytes.append(&mut u64_to_u8_vec(*rz));
+        }
+        let rzy_repr = &self.rzy.into_repr();
+        let mut rzy_bytes: Vec<u8> = vec![];
+        for rzy in rzy_repr.as_ref() {
+            rzy_bytes.append(&mut u64_to_u8_vec(*rzy));
+        }
+        let z_opening_bytes = &self.z_opening.into_uncompressed();
+        let zy_opening_bytes = &self.zy_opening.into_uncompressed();
+
+        let mut res: Vec<u8> = vec![];
         res.extend_from_slice(r_bytes.as_ref());
         res.extend_from_slice(t_bytes.as_ref());
-        res.extend_from_slice(rz_bytes.as_ref());
-        res.extend_from_slice(rzy_bytes.as_ref());
+        res.extend_from_slice(&rz_bytes);
+        res.extend_from_slice(&rzy_bytes);
         res.extend_from_slice(z_opening_bytes.as_ref());
         res.extend_from_slice(zy_opening_bytes.as_ref());
-        res[0..448].try_into().expect("slice with incorrect length") // turn vector into slice since full length is known
+        res
+        // res[0..res.len()] //.try_into().expect("slice with incorrect length")
     }
 }
 
@@ -694,9 +704,9 @@ pub fn create_advice<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
 pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: SynthesisDriver>(
     circuit: &C, // witness
     srs: &SRS<E>
-) -> Result<Proof<E>, SynthesisError> where 
-<E as Engine>::G1Affine: UncompressedEncoding,
-<E as Engine>::Fr: PrimeField
+) -> Result<Proof<E>, SynthesisError> // where 
+// <E as Engine>::G1Affine: UncompressedEncoding,
+// <E as Engine>::Fr: PrimeField
 {
     // US keys
     let mut csprng = OsRng{};
@@ -948,7 +958,7 @@ pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: Synthes
         r, rz, rzy, t, z_opening, zy_opening,
     };
     let message2: &[u8] = b"TODO NG This is a dummy message instead of pi,x,c,pk_l,sigma";
-    // let message2: &[u8] = sonic_proof.to_bytes();
+    let message2: &[u8] = &sonic_proof.to_bytes();
     let sigma_ot = sk_ot.sign(message2);
 
     Ok(Proof {
