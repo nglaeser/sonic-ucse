@@ -9,11 +9,7 @@ use curv::arithmetic::traits::Modulo;
 use elgamal::{
     ElGamal, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,ElGamalCiphertext,ElGamalError
 };
-// TODO NG fix differences between bls12_381 and pairing::bls12_381
-// (upgrade paper code to use bls12_381 instead of the older pairing::bls12_381)
-// use pairing::bls12_381::{Bls12,G1Affine,G2Affine,Fr,Scalar};
 use pairing::bls12_381::Fr;
-// use bls12_381::{G1Affine,G2Affine,Scalar};
 use pairing::bls12_381::{G1Affine,G2Affine};
 use pairing::{Engine,CurveAffine,Field};
 use group::{UncompressedEncoding,ff::PrimeField};
@@ -79,22 +75,7 @@ fn main() {
     let sigma: Signature = keypair_l.sign(pk_ot_message);
 
     // \Sigma_OT.Sign(sk_ot, pi||x||c||pk_l||sigma)
-    let x: &[u8] = b"fake statement";
-    let mut c_bytes: Vec<u8> = ctext_up.to_bytes();
-    let pk_l_bytes: [u8; 32] = pk_l.to_bytes();
-    let sigma_bytes: [u8; 64] = sigma.to_bytes();
-
-    let mut res: Vec<u8> = Vec::<u8>::with_capacity(448);
-    res.extend_from_slice(sonic_bytes);
-    res.extend_from_slice(x);
-    res.append(&mut c_bytes);
-    res.extend_from_slice(&pk_l_bytes);
-    res.extend_from_slice(&sigma_bytes);
-
-    let proof_bytes: &[u8] = res[0..res.len()].try_into().expect("slice with incorrect length");
-    // let proof_bytes: &[u8] = sonic_bytes;
-    // let proof_bytes: &[u8] = b"TODO NG This is a dummy message instead of pi,x,c,pk_l,sigma";
-
+    let proof_bytes: &[u8] = b"This is a dummy message instead of pi,x,c,pk_l,sigma";
     let sigma_ot = sk_ot.sign(proof_bytes);
     println!("done");
 

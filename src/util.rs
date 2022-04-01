@@ -2,7 +2,32 @@ use crate::SynthesisError;
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, PrimeFieldRepr};
 use std::io;
+use crate::protocol::SonicProof;
+use crate::Statement;
+use crate::kupke::Serialize;
+use elgamal::ElGamalCiphertext;
+use ed25519_dalek::{Signature,PublicKey};
 
+pub fn to_bytes<
+    A: CurveAffine,
+    F: pairing::PrimeField
+>(pi: SonicProof<A,F>, x: &Statement, c: &elgamal::ElGamalCiphertext, pk_l: PublicKey, 
+    sigma: Signature)
+-> Vec<u8> {
+    let sonic_bytes: &[u8] = &pi.to_bytes();
+    let x_bytes: &[u8] = x.get_statement();
+    let mut c_bytes: Vec<u8> = c.to_bytes();
+    let pk_l_bytes: [u8; 32] = pk_l.to_bytes();
+    let sigma_bytes: [u8; 64] = sigma.to_bytes();
+
+    let mut res: Vec<u8> = Vec::<u8>::with_capacity(448);
+    res.extend_from_slice(sonic_bytes);
+    res.extend_from_slice(x_bytes);
+    res.append(&mut c_bytes);
+    res.extend_from_slice(&pk_l_bytes);
+    res.extend_from_slice(&sigma_bytes);
+    res
+}
 pub fn u64_to_u8_vec(x: u64) -> Vec<u8> {
     let b1 : u8 = ((x >> 56) & 0xff) as u8;
     let b2 : u8 = ((x >> 48) & 0xff) as u8;

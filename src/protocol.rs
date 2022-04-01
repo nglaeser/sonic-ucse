@@ -957,9 +957,8 @@ pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: Synthes
     let sonic_proof = SonicProof {
         r, rz, rzy, t, z_opening, zy_opening,
     };
-    let message2: &[u8] = b"TODO NG This is a dummy message instead of pi,x,c,pk_l,sigma";
-    let message2: &[u8] = &sonic_proof.to_bytes();
-    let sigma_ot = sk_ot.sign(message2);
+    let message2: Vec<u8> = to_bytes(sonic_proof, circuit, &c, pk_l, sigma);
+    let sigma_ot = sk_ot.sign(&message2[0..message2.len()]);
 
     Ok(Proof {
         c,
