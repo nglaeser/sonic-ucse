@@ -53,11 +53,11 @@ fn main() {
     assert_eq!(message, ptext_up.unwrap());
     println!("done");
 
-    println!("\nTurning Sonic proof into u8");
-    println!("-------------------------");
+    print!("\nTurning Sonic proof into bytes...");
     // let dummyproof = SonicProof::<G1Affine, Scalar>::dummy();
     let dummyproof = SonicProof::<G1Affine, Fr>::dummy();
     let sonic_bytes: &[u8] = &dummyproof.to_bytes();
+    println!("done\n");
 
     println!("Testing signature schemes");
     println!("-------------------------");

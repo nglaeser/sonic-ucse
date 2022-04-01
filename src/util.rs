@@ -11,7 +11,7 @@ use ed25519_dalek::{Signature,PublicKey};
 pub fn to_bytes<
     A: CurveAffine,
     F: pairing::PrimeField
->(pi: SonicProof<A,F>, x: &Statement, c: &elgamal::ElGamalCiphertext, pk_l: PublicKey, 
+>(pi: &SonicProof<A,F>, x: &Statement, c: &elgamal::ElGamalCiphertext, pk_l: &PublicKey, 
     sigma: Signature)
 -> Vec<u8> {
     let sonic_bytes: &[u8] = &pi.to_bytes();

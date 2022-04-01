@@ -98,7 +98,7 @@ pub struct MultiVerifier<E: Engine, C: Circuit<E>, S: SynthesisDriver> {
     _marker: PhantomData<(E, S)>
 }
 
-impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
+impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, C, S> {
     pub fn new(circuit: C, srs: &SRS<E>) -> Result<Self, SynthesisError> {
         struct Preprocess<E: Engine> {
             k_map: Vec<usize>,
@@ -264,6 +264,15 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
         self.batch.add_signature(proof.sigma);
         self.batch.add_ot_pk(proof.pk_ot.clone()); // TODO clone()?
         self.batch.add_ot_signature(proof.sigma_ot.clone());
+        let sonic_proof = SonicProof {
+            r: proof.r, 
+            rz: proof.rz, 
+            rzy: proof.rzy, 
+            t: proof.t,
+            z_opening: proof.z_opening,
+            zy_opening: proof.zy_opening,
+        };
+        self.batch.add_underlying_proof(sonic_proof.clone());
 
         //// --- Sonic proof ---
         let mut transcript = Transcript::new(&[]);
@@ -378,7 +387,7 @@ impl<E: Engine, C: Circuit<E>, S: SynthesisDriver> MultiVerifier<E, C, S> {
         // return 1 if all checks pass, else return 0
 
         // because this is the last line, the fn returns the output of this call
-        self.batch.check_all() // batch.rs:97
+        self.batch.check_all(&self.circuit) // batch.rs:97
     }
 }
 
@@ -957,7 +966,7 @@ pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: Synthes
     let sonic_proof = SonicProof {
         r, rz, rzy, t, z_opening, zy_opening,
     };
-    let message2: Vec<u8> = to_bytes(sonic_proof, circuit, &c, pk_l, sigma);
+    let message2: Vec<u8> = to_bytes(&sonic_proof, circuit, &c, &pk_l, sigma);
     let sigma_ot = sk_ot.sign(&message2[0..message2.len()]);
 
     Ok(Proof {
@@ -966,7 +975,7 @@ pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: Synthes
         pk_l,
         sigma,
         pk_ot,
-        sigma_ot
+        sigma_ot,
     })
 
     // zkV3 is in verification algorithm instead
