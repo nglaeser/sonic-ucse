@@ -24,7 +24,7 @@ pub trait Backend<E: Engine> {
     fn new_linear_constraint(&mut self) -> Self::LinearConstraintIndex;
 
     /// Insert a term into a linear constraint. TODO: bad name of function
-    fn insert_coefficient(&mut self, _var: Variable, _coeff: Coeff<E>, y: &Self::LinearConstraintIndex) { }
+    fn insert_coefficient(&mut self, _var: Variable, _coeff: Coeff<E>, _y: &Self::LinearConstraintIndex) { }
 
     /// Compute a `LinearConstraintIndex` from `q`.
     fn get_for_q(&self, q: usize) -> Self::LinearConstraintIndex;
@@ -346,7 +346,7 @@ impl SynthesisDriver for Permutation3 {
                 // at each depth of recursion we'd end up with a new type, which is
                 // impossible for the compiler to reason about.
                 let lc = lc.as_ref();
-                let lc: &mut Iterator<Item=&(Variable, Coeff<E>)> = &mut lc.into_iter();
+                let lc: &mut dyn Iterator<Item=&(Variable, Coeff<E>)> = &mut lc.into_iter();
                 let lc = lc.peekable();
 
                 self.enforce_equals(lc, None);
@@ -404,7 +404,7 @@ impl SynthesisDriver for Permutation3 {
             // is interpreted to be zero.
             fn enforce_equals<'a>(
                 &mut self,
-                mut lhs: Peekable<&mut Iterator<Item=&'a (Variable, Coeff<E>)>>,
+                mut lhs: Peekable<&mut dyn Iterator<Item=&'a (Variable, Coeff<E>)>>,
                 rhs: Option<Variable>
             ) -> Option<E::Fr>
             {
@@ -447,7 +447,7 @@ impl SynthesisDriver for Permutation3 {
                             // duplicated; otherwise, the duplicate variable will have a value of zero
                             // and we'd have to somehow track all of the duplicates when we later assign.
                             let mut iter = Some(term).into_iter().chain(lhs);
-                            let iter: &mut Iterator<Item=&(Variable, Coeff<E>)> = &mut iter;
+                            let iter: &mut dyn Iterator<Item=&(Variable, Coeff<E>)> = &mut iter;
                             let value = self.enforce_equals(iter.peekable(), Some(ephemeral));
 
                             // Set the correct ephemeral value right away
@@ -547,8 +547,8 @@ impl SynthesisDriver for Permutation3 {
                 // free_i! So, we can relate the ephemeral variable to the
                 // original.
                 let iter = [(var, Coeff::One), (ephemeral, Coeff::NegativeOne)];
-                let mut iter = iter.into_iter();
-                let iter: &mut Iterator<Item=&(Variable, Coeff<E>)> = &mut iter;
+                let mut iter = iter.iter();
+                let iter: &mut dyn Iterator<Item=&(Variable, Coeff<E>)> = &mut iter;
                 self.enforce_equals(iter.peekable(), None);
             }
 

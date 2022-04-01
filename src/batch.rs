@@ -11,7 +11,6 @@
 use pairing::{Engine, Field, CurveAffine, CurveProjective};
 use crate::srs::SRS;
 use crate::util::multiexp;
-use crate::kupke;
 use crate::Statement;
 use crate::protocol::SonicProof;
 use ed25519_dalek::{PublicKey,Signature,Verifier};
@@ -139,7 +138,7 @@ impl<E: Engine> Batch<E> {
         self.underlying_proof.push(proof);
     }
 
-    pub fn check_all(mut self, x: &Statement) -> bool {
+    pub fn check_all(mut self, x: &dyn Statement) -> bool {
         //// check sigma and sigma_ot first, before the sonic proof
         // verify all the sigmas
         {
@@ -163,7 +162,7 @@ impl<E: Engine> Batch<E> {
                 // if !&self.sigma_ot[i].is_ok_and(|&x| pk.verify_signature(x,message)) { return false }
                 let sigma_ot_valid = match &self.sigma_ot[i] {
                     Ok(sig) => pk.verify_signature(sig,&message[0..message.len()]),
-                    Err(error) => false
+                    Err(_) => false
                 };
                 if !sigma_ot_valid { return false }
                 i+=1;

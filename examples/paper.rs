@@ -6,14 +6,12 @@ extern crate sonic;
 // extern crate schnorr;
 extern crate ed25519_dalek;
 
-use pairing::{Engine, Field, PrimeField, CurveProjective};
+use pairing::{Engine, Field, PrimeField};
 use sonic::protocol::*;
 use sonic::srs::SRS;
 use sonic::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff, BigIntable, Statement};
 use sonic::synthesis::*;
 use std::marker::PhantomData;
-use curv::BigInt;
-use elgamal::{ElGamalKeyPair,ElGamalPP};
 
 struct Adaptor<'a, E: Engine, CS: ConstraintSystem<E> + 'a> {
     cs: &'a mut CS,
@@ -164,8 +162,8 @@ impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircui
     }
 }
 impl<C: BigIntable> BigIntable for AdaptorCircuit<C> {
-    fn toBigInt(&self) -> curv::BigInt {
-        self.0.toBigInt()
+    fn to_big_int(&self) -> curv::BigInt {
+        self.0.to_big_int()
     }
 }
 impl<C: Statement> Statement for AdaptorCircuit<C> {
@@ -176,32 +174,7 @@ impl<C: Statement> Statement for AdaptorCircuit<C> {
 
 fn main() {
     use pairing::bls12_381::{Bls12, Fr};
-    use rand::rngs::OsRng;
-    use ed25519_dalek::{Keypair,Signature,PublicKey};
     use std::time::{Instant};
-
-    // Fr = prime (scalar) field of the groups
-    let srs_x = Fr::from_str("23923").unwrap();
-    let srs_alpha = Fr::from_str("23728792").unwrap();
-
-    // generate srs signature keys
-    let mut csprng = OsRng{};
-    let keypair_sig: Keypair = Keypair::generate(&mut csprng);
-
-    // generate srs KU-PKE keys
-    let lambda: usize = 128;
-    let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
-    let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
-
-    println!("making srs");
-    let start = Instant::now();
-    // TODO NG why create a dummy srs and not a real one?
-    // srs.rs:32
-    let srs = SRS::<Bls12>::dummy(830564, // d
-        keypair_sig.public, // cpk
-        keypair_pke.pk, // pk
-        srs_x, srs_alpha);
-    println!("done in {:?}", start.elapsed());
 
     // 'a is a named lifetime (borrowed pointers are required to have lifetimes in impls)
     struct PedersenHashPreimageCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> {
@@ -258,7 +231,7 @@ fn main() {
         }
     }
     impl BigIntable for SHA256PreimageCircuit {
-        fn toBigInt(&self) -> curv::BigInt {
+        fn to_big_int(&self) -> curv::BigInt {
             let preimage = &self.preimage;
             let len = preimage.len();
 
@@ -302,173 +275,28 @@ fn main() {
         }
     }
 
-    // 1 Groth16 proof
     {
-        use pairing::{CurveAffine};
-        use pairing::bls12_381::{G1Affine, G2Affine};
-        let a = G1Affine::one();
-        let b = G2Affine::one();
-        let c = G1Affine::one();
+        // Fr = prime (scalar) field of the groups
+        let srs_x = Fr::from_str("23923").unwrap();
+        let srs_alpha = Fr::from_str("23728792").unwrap();
 
-        let alpha = G1Affine::one();
-        let beta = G2Affine::one();
-        let iv = G1Affine::one();
-        let gamma = G2Affine::one().prepare();
-        let delta = G2Affine::one().prepare();
+        // generate srs signature keys
+        // let mut csprng = OsRng{};
+        // let keypair_sig: Keypair = Keypair::generate(&mut csprng);
 
-        let alphabeta = <Bls12 as Engine>::pairing(alpha, beta);
+        // generate srs KU-PKE keys
+        // let lambda: usize = 128;
+        // let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
+        // let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
 
-        // verifying a dummy proof only
-        println!("verifying an idealized groth16 proof");
+        println!("making srs");
         let start = Instant::now();
-        assert!(<Bls12 as Engine>::final_exponentiation(
-            &<Bls12 as Engine>::miller_loop([
-                (&a.prepare(), &b.prepare()),
-                (&iv.prepare(), &gamma),
-                (&c.prepare(), &delta),
-            ].into_iter())
-        ).unwrap() != alphabeta);
+        // TODO NG why create a dummy srs and not a real one?
+        // srs.rs:32
+        let srs = SRS::<Bls12>::dummy(830564, // d
+            srs_x, srs_alpha);
         println!("done in {:?}", start.elapsed());
-    }
 
-    // 100 Groth16 proofs
-    {
-        use sonic::util::multiexp;
-        use pairing::{CurveAffine};
-        use pairing::bls12_381::{G1Affine, G2Affine};
-        // e([\alpha G], [\beta H]) = e(A, B) e(IV, [\gamma] H) e(C, [\delta] H)
-        let a = G1Affine::one();
-        let b = G2Affine::one();
-        let c = vec![G1Affine::one(); 100];
-        let mut tmp = Fr::one();
-        tmp.double();
-        tmp = tmp.inverse().unwrap();
-        let cscalars = (0..100).map(|_| {tmp.square(); tmp}).collect::<Vec<_>>();
-
-        let alpha = G1Affine::one();
-        let beta = G2Affine::one();
-        let iv = G1Affine::one();
-        let gamma = G2Affine::one().prepare();
-        let delta = G2Affine::one().prepare();
-
-        let alphabeta = <Bls12 as Engine>::pairing(alpha, beta);
-
-        println!("verifying 100 idealized groth16 proofs");
-        let start = Instant::now();
-        let c = multiexp(
-            c.iter(),
-            cscalars.iter(),
-        ).into_affine();
-        assert!(<Bls12 as Engine>::final_exponentiation(
-            &<Bls12 as Engine>::miller_loop([
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&a.prepare(), &b.prepare()),
-                (&iv.prepare(), &gamma),
-                (&c.prepare(), &delta),
-            ].into_iter())
-        ).unwrap() != alphabeta);
-        println!("done in {:?}", start.elapsed());
-    }
-
-    {
         type ChosenBackend = Permutation3;
 
         let samples: usize = 5;

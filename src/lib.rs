@@ -1,6 +1,5 @@
 use pairing::{Engine, Field};
 use std::ops::{Add, Neg, Sub};
-use curv::BigInt;
 
 pub mod srs;
 pub mod util;
@@ -16,7 +15,7 @@ pub enum SynthesisError {
 }
 
 pub trait BigIntable {
-    fn toBigInt(&self) -> curv::BigInt;
+    fn to_big_int(&self) -> curv::BigInt;
 }
 pub trait Statement {
     fn get_statement(&self) -> &[u8];

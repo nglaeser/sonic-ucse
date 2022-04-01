@@ -1,19 +1,15 @@
 extern crate sonic;
 
 use sonic::protocol::*;
-use sonic::kupke::{KeyUpdate,SKeyUpdate,Serialize};
+use sonic::kupke::{KeyUpdate,SKeyUpdate};
 use lamport_sigs;
 use ring::digest::SHA256;
 use curv::BigInt;
-use curv::arithmetic::traits::Modulo;
 use elgamal::{
     ElGamal, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,ElGamalCiphertext,ElGamalError
 };
 use pairing::bls12_381::Fr;
-use pairing::bls12_381::{G1Affine,G2Affine};
-use pairing::{Engine,CurveAffine,Field};
-use group::{UncompressedEncoding,ff::PrimeField};
-use std::convert::TryInto;
+use pairing::bls12_381::{G1Affine};
 
 fn main() {
     // to test correctness of new primitives implemented for UC-SE
@@ -30,7 +26,7 @@ fn main() {
     println!("done");
 
     print!("KeyGen...");
-    let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
+    let mut keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
     println!("done");
 
     print!("Encrypt...");
@@ -45,18 +41,18 @@ fn main() {
     println!("done");
 
     print!("Update...");
-    let (pk_up, up_sk) = keypair_pke.pk.upk();
+    let up_sk = keypair_pke.pk.upk();
     let sk_up: ElGamalPrivateKey = keypair_pke.sk.usk(&up_sk);
-    let ctext_up: ElGamalCiphertext = ElGamal::encrypt(&message, &pk_up).unwrap();
+    let ctext_up: ElGamalCiphertext = ElGamal::encrypt(&message, &keypair_pke.pk).unwrap();
     let ptext_up: Result<BigInt, ElGamalError> = ElGamal::decrypt(&ctext_up, &sk_up);
     // TODO NG probably make upk just directly update the keypair
     assert_eq!(message, ptext_up.unwrap());
     println!("done");
 
-    print!("\nTurning Sonic proof into bytes...");
+    print!("\nTesting turning Sonic proof into bytes...");
     // let dummyproof = SonicProof::<G1Affine, Scalar>::dummy();
     let dummyproof = SonicProof::<G1Affine, Fr>::dummy();
-    let sonic_bytes: &[u8] = &dummyproof.to_bytes();
+    let _sonic_bytes: &[u8] = &dummyproof.to_bytes();
     println!("done\n");
 
     println!("Testing signature schemes");

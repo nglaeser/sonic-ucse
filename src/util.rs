@@ -5,13 +5,12 @@ use std::io;
 use crate::protocol::SonicProof;
 use crate::Statement;
 use crate::kupke::Serialize;
-use elgamal::ElGamalCiphertext;
 use ed25519_dalek::{Signature,PublicKey};
 
 pub fn to_bytes<
     A: CurveAffine,
     F: pairing::PrimeField
->(pi: &SonicProof<A,F>, x: &Statement, c: &elgamal::ElGamalCiphertext, pk_l: &PublicKey, 
+>(pi: &SonicProof<A,F>, x: &dyn Statement, c: &elgamal::ElGamalCiphertext, pk_l: &PublicKey, 
     sigma: Signature)
 -> Vec<u8> {
     let sonic_bytes: &[u8] = &pi.to_bytes();
@@ -48,14 +47,14 @@ pub trait TranscriptProtocol {
 
 impl TranscriptProtocol for Transcript {
     fn commit_point<G: CurveAffine>(&mut self, point: &G) {
-        self.commit_bytes(b"point", point.into_compressed().as_ref());
+        self.append_message(b"point", point.into_compressed().as_ref());
     }
 
     fn commit_scalar<F: PrimeField>(&mut self, scalar: &F) {
         let mut v = vec![];
         scalar.into_repr().write_le(&mut v).unwrap();
 
-        self.commit_bytes(b"scalar", &v);
+        self.append_message(b"scalar", &v);
     }
 
     fn get_challenge_scalar<F: PrimeField>(&mut self) -> F {

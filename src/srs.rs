@@ -1,6 +1,7 @@
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, Wnaf};
-use ed25519_dalek::PublicKey;
-use elgamal::ElGamalPublicKey;
+use rand::rngs::OsRng;
+use ed25519_dalek::{Keypair,PublicKey};
+use elgamal::{ElGamalKeyPair,ElGamalPublicKey,ElGamalPP};
 
 pub struct SRS<E: Engine> {
     pub d: usize,
@@ -34,8 +35,17 @@ pub struct SRS<E: Engine> {
 }
 
 impl<E: Engine> SRS<E> {
-    pub fn dummy(d: usize, cpk: PublicKey, pk: ElGamalPublicKey, _: E::Fr, _: E::Fr) 
+    pub fn dummy(d: usize, _: E::Fr, _: E::Fr) 
     -> Self {
+        // generate srs signature keys
+        let mut csprng = OsRng{};
+        let keypair_sig: Keypair = Keypair::generate(&mut csprng);
+
+        // generate srs KU-PKE keys
+        let lambda: usize = 128;
+        let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
+        let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
+
         SRS {
             d: d,
             // creates a d+1 dim vector where all elements equal E::G1Affine::one()
@@ -52,12 +62,12 @@ impl<E: Engine> SRS<E> {
             h_negative_x_alpha: vec![E::G2Affine::one(); d + 1],
             h_positive_x_alpha: vec![E::G2Affine::one(); d + 1],
 
-            cpk: cpk,
-            pk: pk,
+            cpk: keypair_sig.public,
+            pk: keypair_pke.pk,
         }
     }
 
-    pub fn new(d: usize, cpk: PublicKey, pk: ElGamalPublicKey, x: E::Fr, alpha: E::Fr) 
+    pub fn new(d: usize, x: E::Fr, alpha: E::Fr) 
     -> Self {
         let mut g1 = Wnaf::new();
         let mut g1 = g1.base(E::G1::one(), d * 4);
@@ -88,6 +98,15 @@ impl<E: Engine> SRS<E> {
         let mut inv_x_alpha = x_inv;
         inv_x_alpha.mul_assign(&alpha);
 
+        // generate srs signature keys
+        let mut csprng = OsRng{};
+        let keypair_sig: Keypair = Keypair::generate(&mut csprng);
+
+        // generate srs KU-PKE keys
+        let lambda: usize = 128;
+        let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
+        let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
+
         SRS {
             d: d,
             g_negative_x: table(E::Fr::one(), x_inv, d + 1, &mut g1),
@@ -102,8 +121,8 @@ impl<E: Engine> SRS<E> {
             h_negative_x_alpha: table(alpha, x_inv, d + 1, &mut g2),
             h_positive_x_alpha: table(alpha, x, d + 1, &mut g2),
 
-            cpk: cpk,
-            pk: pk,
+            cpk: keypair_sig.public,
+            pk: keypair_pke.pk,
         }
     }
 }

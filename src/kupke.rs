@@ -1,19 +1,17 @@
 use curv::BigInt;
 use curv::arithmetic::traits::{Modulo,Samplable};
 use curv::arithmetic::Converter;
-use elgamal::{
-    rfc7919_groups::SupportedGroups, ElGamal, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,
-    ElGamalPublicKey,ExponentElGamal,ElGamalCiphertext,
-};
+use elgamal::{ElGamalPP,ElGamalPrivateKey,ElGamalPublicKey,ElGamalCiphertext};
+// use elgamal::{ElGamal,ElGamalKeyPair};
 
 pub trait KeyUpdate {
-    fn upk(&self) -> (ElGamalPublicKey, SKUpdate);
+    fn upk(&mut self) -> SKUpdate;
 }
 impl KeyUpdate for ElGamalPublicKey {
-    fn upk(&self) -> (ElGamalPublicKey, SKUpdate) {
+    fn upk(&mut self) -> SKUpdate {
         let up_sk: SKUpdate = SKUpdate::random(&self.pp);
-        let pk_up: ElGamalPublicKey = self.exp(&up_sk.up);
-        (pk_up, up_sk)
+        self.exp(&up_sk.up);
+        up_sk // TODO add proof
     }
 }
 
@@ -41,12 +39,13 @@ impl SKeyUpdate for ElGamalPrivateKey {
 }
 
 pub trait Exponentiation {
-    fn exp(&self, exp: &BigInt) -> ElGamalPublicKey;
+    fn exp(&mut self, exp: &BigInt) -> ();
 }
 impl Exponentiation for ElGamalPublicKey {
-    fn exp(&self, exp: &BigInt) -> ElGamalPublicKey {
+    fn exp(&mut self, exp: &BigInt) -> () {
         let h_up = BigInt::mod_pow(&self.h, &exp, &self.pp.p);
-        ElGamalPublicKey { pp: self.pp.clone(), h: h_up }
+        // ElGamalPublicKey { pp: self.pp.clone(), h: h_up }
+        self.h = h_up;
     }
 }
 

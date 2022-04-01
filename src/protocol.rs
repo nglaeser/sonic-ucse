@@ -1,4 +1,4 @@
-use pairing::{Engine, Field, CurveAffine, CurveProjective, PrimeField};
+use pairing::{Engine, Field, CurveAffine, CurveProjective};
 use std::marker::PhantomData;
 use merlin::{Transcript};
 use crate::util::*;
@@ -9,12 +9,9 @@ use crate::srs::SRS;
 use rand::rngs::OsRng;
 use ed25519_dalek::{Keypair,PublicKey,Signature,Signer};
 use lamport_sigs;
-use ring::digest::{Algorithm, SHA256, SHA512};
+use ring::digest::SHA256;
+// use ring::digest::{Algorithm, SHA512};
 // static DIGEST_256: &Algorithm = &SHA256; // TODO NG decide which SHA to use
-use elgamal::{ElGamalCiphertext,ElGamal};
-use curv::BigInt;
-use group::prime::{PrimeCurveAffine};
-use std::convert::TryInto;
 
 #[derive(Clone)]
 pub struct SxyAdvice<E: Engine> {
@@ -33,9 +30,6 @@ pub struct SonicProof<A,F> {
     zy_opening: A,
 }
 impl<A: CurveAffine, F: pairing::PrimeField> SonicProof<A,F> {
-// impl<A: PrimeCurveAffine, F: group::ff::PrimeField> SonicProof<A,F> {
-// impl<A: PrimeCurveAffine + UncompressedEncoding, F: group::ff::PrimeField> SonicProof<A,F> {
-    const rz_len: u32 = F::NUM_BITS/8;
     pub fn dummy() -> Self {
         SonicProof {
             r : A::one(),
@@ -110,7 +104,7 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         impl<'a, E: Engine> Backend<E> for &'a mut Preprocess<E> {
             type LinearConstraintIndex = ();
 
-            fn get_for_q(&self, q: usize) -> Self::LinearConstraintIndex { () }
+            fn get_for_q(&self, _q: usize) -> Self::LinearConstraintIndex { () }
 
             fn new_k_power(&mut self, index: usize) {
                 self.k_map.push(index);
@@ -419,7 +413,7 @@ pub fn create_aggregate<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
         impl<'a, E: Engine> Backend<E> for &'a mut CountN {
             type LinearConstraintIndex = ();
 
-            fn get_for_q(&self, q: usize) -> Self::LinearConstraintIndex { () }
+            fn get_for_q(&self, _q: usize) -> Self::LinearConstraintIndex { () }
 
             fn new_multiplication_gate(&mut self) {
                 self.n += 1;
@@ -625,7 +619,7 @@ pub fn create_advice<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
 
             fn new_linear_constraint(&mut self) -> Self::LinearConstraintIndex { () }
 
-            fn get_for_q(&self, q: usize) -> Self::LinearConstraintIndex { () }
+            fn get_for_q(&self, _q: usize) -> Self::LinearConstraintIndex { () }
 
             fn new_multiplication_gate(&mut self) {
                 self.n += 1;
@@ -734,7 +728,7 @@ pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: Synthes
 
         fn new_linear_constraint(&mut self) -> Self::LinearConstraintIndex { () }
 
-        fn get_for_q(&self, q: usize) -> Self::LinearConstraintIndex {
+        fn get_for_q(&self, _q: usize) -> Self::LinearConstraintIndex {
             ()
         }
 
@@ -959,7 +953,7 @@ pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: Synthes
     let sigma: Signature = keypair_l.sign(pk_ot_message);
 
     // encrypt the witness (circuit C)
-    let message: curv::BigInt = circuit.toBigInt();
+    let message: curv::BigInt = circuit.to_big_int();
     // let message = curv::BigInt::from(0);
     let c: elgamal::ElGamalCiphertext = elgamal::ElGamal::encrypt(&message, &srs.pk).unwrap();
 
@@ -1059,7 +1053,7 @@ impl<E: Engine> SyEval<E> {
         (self.negative_coeffs, self.positive_coeffs)
     }
 
-    fn finalize(self, y: E::Fr) -> E::Fr {
+    fn _finalize(self, y: E::Fr) -> E::Fr {
         let mut acc = E::Fr::zero();
 
         let mut tmp = y;
