@@ -9,7 +9,7 @@ version = "0.14"
 features = ["u128-support"]
 
 [dependencies]
-merlin = "1"
+merlin = "2"
 rand = "0.7"
 bellman = "0.1.0"
 lamport_sigs = "0.7.0"
@@ -17,8 +17,8 @@ ring = "0.16.15"
 ed25519-dalek = "1"
 elgamal = { path = "rust-elgamal" }
 curv-kzen = "0.9.0"
-schnorrkel = "0.10.2"
-curve25519-dalek = { package = "curve25519-dalek-ng", version = "4" }
+curve25519-dalek = "3.2.1"
+starsig = { path = "starsig" }
 
 [dependencies.sapling-crypto]
 git = "https://github.com/zcash-hackworks/sapling-crypto"
