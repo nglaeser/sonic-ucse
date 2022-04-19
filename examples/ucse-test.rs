@@ -2,6 +2,7 @@ extern crate sonic;
 
 use sonic::protocol::*;
 use sonic::kupke::{KeyUpdate,SKeyUpdate};
+use sonic::usig::*;
 use lamport_sigs;
 use ring::digest::SHA256;
 use curv::BigInt;
@@ -11,13 +12,10 @@ use elgamal::{
 use pairing::bls12_381::Fr;
 use pairing::bls12_381::{G1Affine};
 use starsig::{Signature,VerificationKey};
-use curve25519_dalek::scalar::Scalar;
-use merlin::Transcript;
 
 fn main() {
     // to test correctness of new primitives implemented for UC-SE
 
-    use rand::rngs::OsRng;
     // use std::time::{Instant};
 
     println!("\nTesting key-updatable PKE");
@@ -57,10 +55,9 @@ fn main() {
 
     println!("Testing signature schemes");
     print!("- KeyGen...");
-    let mut csprng = OsRng{};
     // updatable sig
-    let sk_l: Scalar = Scalar::random(&mut csprng);
-    let pk_l: VerificationKey = VerificationKey::from_secret(&sk_l);
+    let usig = Starsig;
+    let (sk_l, pk_l): (SecretKey, VerificationKey) = usig.kgen();
 
     // OT
     let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
@@ -71,7 +68,7 @@ fn main() {
     // updatable sig
     let pk_ot_message: &[u8] = &pk_ot.to_bytes(); // TODO use proper message
     let pk_ot_message: &[u8] = b"This is a dummy message instead of pk_ot";
-    let sigma: Signature = Signature::sign(&mut Transcript::new(pk_ot_message), sk_l);
+    let sigma: Signature = usig.sign(sk_l, pk_ot_message);
 
     // OT
     let proof_bytes: &[u8] = b"This is a dummy message instead of pi,x,c,pk_l,sigma";
@@ -80,9 +77,7 @@ fn main() {
 
     print!("- Verify...");
     // updatable sig
-    assert!(sigma
-        .verify(&mut Transcript::new(pk_ot_message), pk_l)
-        .is_ok());
+    assert!(usig.verify(pk_l, pk_ot_message, sigma).is_ok());
     // OT
     let sigma_ot_valid = match sigma_ot {
         Ok(sig) => pk_ot.verify_signature(&sig,proof_bytes),
@@ -93,45 +88,16 @@ fn main() {
 
     print!("- Update...");
     // updatable sig only
-    use std::ops::Add;
 
-    // update sk
-    // sk_up := sk `op` up_sk
-    // in the case of starsig, `op` is +
-    let sk_l_scalar: Scalar = sk_l.clone();
-    let up_sk_l: Scalar = Scalar::random(&mut csprng);
-    let sk_l_up: Scalar = sk_l_scalar.add(up_sk_l);
+    // update sk, pk
+    let (pk_l_up, up_sk_l) = usig.upk(pk_l);
+    let sk_l_up = usig.usk(sk_l, up_sk_l);
+    assert_eq!(pk_l_up, VerificationKey::from_secret(&(sk_l_up.scalar)));
 
     // update sig
-    // sigma_up := sigma + c * up_sk 
-    //           = (r + c * sk) + c * up_sk = r + c * sk_up
-    use starsig::TranscriptProtocol;
-    let mut transcript = Transcript::new(pk_ot_message);
-    let c = {
-        transcript.starsig_domain_sep();
-        transcript.append_point(b"R", &sigma.R);
-        transcript.challenge_scalar(b"c")
-    };
-    let s_new = sigma.s + c * up_sk_l;
-    let sigma_up = Signature { s: s_new, R: sigma.R };
-
-    // update pk
-    // pk_up := pk mu(`op`) up_sk
-    // in the case of starsig, mu(`op`) b is + b * RISTRETTO_BASEPOINT_POINT
-    // pk_up  = (sk * RISTRETTO_BASEPOINT_POINT) + (up_sk * RISTRETTO_BASEPOINT_POINT)
-    //        = (sk + up_sk) * RISTRETTO_BASEPOINT_POINT
-    //        = sk_up * RISTRETTO_BASEPOINT_POINT
-    use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
-    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-    let pk_l_compressed: CompressedRistretto = pk_l.into();
-    let pk_l_point: RistrettoPoint = pk_l_compressed.decompress().unwrap();
-    let pk_l_up: VerificationKey = VerificationKey::from(pk_l_point + (up_sk_l*RISTRETTO_BASEPOINT_POINT));
-    assert_eq!(pk_l_up, VerificationKey::from_secret(&(sk_l_up)));
+    let sigma_up = usig.usig(pk_ot_message, sigma, up_sk_l);
 
     // check that updated sig verifies under updated keypair
-    // verify(pk_up, m, sigma_up)
-    assert!(sigma_up
-        .verify(&mut Transcript::new(pk_ot_message), pk_l_up)
-        .is_ok());
+    assert!(usig.verify(pk_l_up, pk_ot_message, sigma_up).is_ok());
     println!("done");
 }

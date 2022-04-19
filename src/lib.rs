@@ -7,6 +7,7 @@ pub mod batch;
 pub mod synthesis;
 pub mod protocol;
 pub mod kupke;
+pub mod usig;
 
 #[derive(Copy, Clone, Debug)]
 pub enum SynthesisError {
