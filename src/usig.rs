@@ -6,7 +6,10 @@ use curve25519_dalek::scalar::Scalar;
 use starsig::TranscriptProtocol;
 use merlin::Transcript;
 use std::ops::{Mul,Add};
+use crate::BigIntable;
+use curv::elliptic::{curves,curves::ECScalar,curves::Ristretto};
 
+// collection of algorithms that make up a digital signature
 pub struct Starsig;
 pub trait Sig<SK, VK, S, E> {
     fn kgen(&self) -> (SK, VK);
@@ -15,6 +18,7 @@ pub trait Sig<SK, VK, S, E> {
 }
 use starsig::{Signature,VerificationKey,StarsigError};
 
+// starsig secret key
 #[derive(Copy,Clone)]
 pub struct SecretKey {
     pub scalar: Scalar,
@@ -32,6 +36,32 @@ impl Add<Update<Scalar>> for SecretKey {
     }
 }
 
+// updatability of keys
+pub trait Updatable<T> where T: Clone + Copy {
+    fn update(self, _: Update<T>) -> Self;
+}
+// how to update starsig secret and public keys
+impl Updatable<Scalar> for SecretKey {
+    fn update(self, up: Update<Scalar>) -> Self {
+        // for starsig sk, `op` is +
+        // sk_up := sk + up_sk
+        self + up
+    }
+}
+impl Updatable<Scalar> for VerificationKey {
+    fn update(self, up: Update<Scalar>) -> Self {
+        // for starsig, mu(`op`) b is + b * RISTRETTO_BASEPOINT_POINT
+        // pk_up := (sk * RISTRETTO_BASEPOINT_POINT) + (up_sk * RISTRETTO_BASEPOINT_POINT)
+        // correctness:
+        // pk_up  = (sk + up_sk) * RISTRETTO_BASEPOINT_POINT
+        //        = sk_up * RISTRETTO_BASEPOINT_POINT
+        let pk_compressed: CompressedRistretto = self.into();
+        let pk_point: RistrettoPoint = pk_compressed.decompress().unwrap();
+        VerificationKey::from(pk_point + (up*RISTRETTO_BASEPOINT_POINT))
+    }
+}
+
+// starsig digital signature algorithms
 impl Sig<SecretKey, VerificationKey, Signature, StarsigError> for Starsig {
     fn kgen(&self) -> (SecretKey, VerificationKey) {
         let mut csprng = OsRng{};
@@ -47,6 +77,7 @@ impl Sig<SecretKey, VerificationKey, Signature, StarsigError> for Starsig {
     }
 }
 
+// updating information
 #[derive(Copy,Clone)]
 pub struct Update<T> where T: Copy + Clone {
     pub scalar: T,
@@ -63,34 +94,34 @@ impl Mul<Update<Scalar>> for Scalar {
         self * up.scalar
     }
 }
-pub trait Updatable<SK, VK, S, T: Copy + Clone> {
+impl BigIntable for Update<Scalar> {
+    fn to_big_int(&self) -> curv::BigInt {
+        let rs: curves::Scalar<Ristretto> = 
+            curves::Scalar::from_raw(ECScalar::from_underlying(self.scalar));
+        rs.to_bigint()
+    }
+}
+
+// additional algorithms for *updatable* signature
+pub trait UpdatableSig<SK, VK, S, T: Copy + Clone> {
     // sk_up := sk `op` up_sk
     // pk_up := pk mu(`op`) up_sk
     fn upk(&self, _: VK) -> (VK, Update<T>);
     fn usk(&self, _: SK, _: Update<T>) -> SK;
     fn usig(&self, _: &'static [u8], _: S, _: Update<T>) -> S;
 }
-// impl Updatable<SecretKey, VerificationKey, Signature, Scalar> for dyn Sig<SecretKey, VerificationKey, Signature, StarsigError> {
-impl Updatable<SecretKey, VerificationKey, Signature, Scalar> for Starsig {
+impl UpdatableSig<SecretKey, VerificationKey, Signature, Scalar> for Starsig {
     fn upk(&self, pk: VerificationKey) -> (VerificationKey, Update<Scalar>) {
-        // mu(`op`) b is + b * RISTRETTO_BASEPOINT_POINT
-        // pk_up := (sk * RISTRETTO_BASEPOINT_POINT) + (up_sk * RISTRETTO_BASEPOINT_POINT)
-        //        = (sk + up_sk) * RISTRETTO_BASEPOINT_POINT
-        //        = sk_up * RISTRETTO_BASEPOINT_POINT
         let mut csprng = OsRng{};
         let r = Scalar::random(&mut csprng);
         let up = Update{ scalar: r };
 
-        let pk_compressed: CompressedRistretto = pk.into();
-        let pk_point: RistrettoPoint = pk_compressed.decompress().unwrap();
-        let pk_up: VerificationKey = VerificationKey::from(pk_point + (up*RISTRETTO_BASEPOINT_POINT));
+        let pk_up: VerificationKey = pk.update(up);
 
         (pk_up, up)
     }
     fn usk(&self, sk: SecretKey, up: Update<Scalar>) -> SecretKey {
-        // `op` is +
-        // sk_up := sk + up_sk
-        sk + up
+        sk.update(up)
     }
     fn usig(&self, m: &'static [u8], sigma: Signature, up: Update<Scalar>) -> Signature {
         // sigma_up := sigma + c * up_sk 

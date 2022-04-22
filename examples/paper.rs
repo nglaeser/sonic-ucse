@@ -227,7 +227,7 @@ fn main() {
 
     impl Statement for SHA256PreimageCircuit {
         fn get_statement(&self) -> &[u8] {
-            b"fake statement"
+            b"fake statement instead of hash digest"
         }
     }
     impl BigIntable for SHA256PreimageCircuit {
@@ -261,6 +261,52 @@ fn main() {
             use sapling_crypto::circuit::sha256::sha256_block_no_padding;
 
             let mut preimage = vec![];
+
+            for &bit in self.preimage.iter() {
+                preimage.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
+            }
+
+            sha256_block_no_padding(&mut *cs, &preimage)?;
+            // sha256_block_no_padding(&mut *cs, &preimage)?;
+            // sha256_block_no_padding(&mut *cs, &preimage)?;
+            // sha256_block_no_padding(&mut *cs, &preimage)?;
+
+            Ok(())
+        }
+    }
+
+    use sonic::usig::Update;
+
+    #[derive(Clone)]
+    struct SHA256PreimageORShiftCircuit {
+        preimage: Vec<Option<bool>>,
+        shift: Update<Scalar>,
+    }
+    impl Statement for SHA256PreimageORShiftCircuit {
+        fn get_statement(&self) -> &[u8] {
+            b"fake statement instead of hash digest, cpk, cpk_o"
+        }
+    }
+    impl BigIntable for SHA256PreimageORShiftCircuit {
+        fn to_big_int(&self) -> curv::BigInt {
+            let left = preimage.to_big_int();
+            let right = shift.to_big_int();
+
+            left.shl(right.bit_length()) + right
+        }
+    }
+    impl<E: Engine> bellman::Circuit<E> for SHA256PreimageORShiftCircuit {
+        fn synthesize<CS: bellman::ConstraintSystem<E>>(
+            self,
+            cs: &mut CS,
+        ) -> Result<(), bellman::SynthesisError> {
+            // TODO NG
+            //use bellman::ConstraintSystem;
+            use sapling_crypto::circuit::boolean::{AllocatedBit, Boolean};
+            use sapling_crypto::circuit::sha256::sha256_block_no_padding;
+
+            let mut preimage = vec![];
+            let mut shift = vec![];
 
             for &bit in self.preimage.iter() {
                 preimage.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
