@@ -11,6 +11,7 @@ use sonic::protocol::*;
 use sonic::srs::SRS;
 use sonic::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff, BigIntable, Statement};
 use sonic::synthesis::*;
+use sonic::util::bool_vec_to_big_int;
 use std::marker::PhantomData;
 
 struct Adaptor<'a, E: Engine, CS: ConstraintSystem<E> + 'a> {
@@ -181,8 +182,17 @@ fn main() {
         preimage: Vec<Option<bool>>,
         params: &'a E::Params,
     }
-
-    // trait Clone for PEdersenHashPreimageCircuit
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Statement for PedersenHashPreimageCircuit<'a, E> {
+        fn get_statement(&self) -> &[u8] {
+            b"fake statement instead of hash digest"
+        }
+    }
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> BigIntable for PedersenHashPreimageCircuit<'a, E> {
+        fn to_big_int(&self) -> curv::BigInt {
+            bool_vec_to_big_int(&self.preimage)
+        }
+    }
+    // trait Clone for PedersenHashPreimageCircuit
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Clone for PedersenHashPreimageCircuit<'a, E> {
         fn clone(&self) -> Self {
             PedersenHashPreimageCircuit {
@@ -191,7 +201,6 @@ fn main() {
             }
         }
     }
-
     // trait bellman::Circuit<Scalar: PrimeField> for PedersenHashPreimageCircuit
     // https://docs.rs/bellman/0.11.1/bellman/trait.Circuit.html
     // i.e. a circuit that can be syntehsized (with `synthesize` during CRSgen and P)
@@ -220,6 +229,55 @@ fn main() {
         }
     }
 
+    // Language for Pedersen preimage OR cpk shift
+    #[derive(Clone)]
+    struct PedersenHashPreimageORShiftCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> {
+        preimage: Vec<Option<bool>>,
+        params: &'a E::Params,
+        shift: Vec<Option<bool>>,
+    }
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Statement for PedersenHashPreimageORShiftCircuit<'a, E> {
+        fn get_statement(&self) -> &[u8] {
+            b"fake statement instead of hash digest, cpk, cpk_o"
+        }
+    }
+    use curv::arithmetic::BitManipulation;
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> BigIntable for PedersenHashPreimageORShiftCircuit<'a, E> {
+        fn to_big_int(&self) -> curv::BigInt {
+            let left = bool_vec_to_big_int(&self.preimage);
+            let right = bool_vec_to_big_int(&self.shift);
+
+            (left << right.bit_length()) + right
+        }
+    }
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine> bellman::Circuit<E> for PedersenHashPreimageORShiftCircuit<'a, E> {
+        fn synthesize<CS: bellman::ConstraintSystem<E>>(
+            self,
+            cs: &mut CS
+        ) -> Result<(), bellman::SynthesisError>
+        {
+            //use bellman::ConstraintSystem;
+            use sapling_crypto::circuit::boolean::{AllocatedBit, Boolean};
+            use sapling_crypto::circuit::pedersen_hash;
+
+            let mut preimage = vec![];
+            let mut shift = vec![];
+
+            for &bit in self.preimage.iter() {
+                preimage.push(Boolean::from(AllocatedBit::alloc(&mut* cs, bit)?));
+            }
+            for &bit in self.shift.iter() {
+                shift.push(Boolean::from(AllocatedBit::alloc(&mut* cs, bit)?));
+            }
+
+            // TODO NG add OR shift check
+            pedersen_hash::pedersen_hash(
+                &mut* cs, pedersen_hash::Personalization::NoteCommitment, &preimage, self.params)?;
+
+            Ok(())
+        }
+    }
+
     #[derive(Clone)]
     struct SHA256PreimageCircuit {
         preimage: Vec<Option<bool>>,
@@ -232,23 +290,7 @@ fn main() {
     }
     impl BigIntable for SHA256PreimageCircuit {
         fn to_big_int(&self) -> curv::BigInt {
-            let preimage = &self.preimage;
-            let len = preimage.len();
-
-            let mut slice = vec![Some(false);64];
-            // let mut out = curv::From::<u64>::from(0);
-            let mut out = curv::BigInt::from(0);
-            for i in 0..(len/64) {
-                let start = i*64;
-                let end = (i+1)*64;
-                slice.copy_from_slice(&preimage[start..end]);
-
-                // convert slice to u64
-                let tmp: u64 = preimage.iter().rev().fold(0,
-                    |acc, &b| (acc << 1) + b.unwrap() as u64);
-                out = out + tmp;
-            }
-            out
+            bool_vec_to_big_int(&self.preimage)
         }
     }
     impl<E: Engine> bellman::Circuit<E> for SHA256PreimageCircuit {
@@ -261,52 +303,6 @@ fn main() {
             use sapling_crypto::circuit::sha256::sha256_block_no_padding;
 
             let mut preimage = vec![];
-
-            for &bit in self.preimage.iter() {
-                preimage.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
-            }
-
-            sha256_block_no_padding(&mut *cs, &preimage)?;
-            // sha256_block_no_padding(&mut *cs, &preimage)?;
-            // sha256_block_no_padding(&mut *cs, &preimage)?;
-            // sha256_block_no_padding(&mut *cs, &preimage)?;
-
-            Ok(())
-        }
-    }
-
-    use sonic::usig::Update;
-
-    #[derive(Clone)]
-    struct SHA256PreimageORShiftCircuit {
-        preimage: Vec<Option<bool>>,
-        shift: Update<Scalar>,
-    }
-    impl Statement for SHA256PreimageORShiftCircuit {
-        fn get_statement(&self) -> &[u8] {
-            b"fake statement instead of hash digest, cpk, cpk_o"
-        }
-    }
-    impl BigIntable for SHA256PreimageORShiftCircuit {
-        fn to_big_int(&self) -> curv::BigInt {
-            let left = preimage.to_big_int();
-            let right = shift.to_big_int();
-
-            left.shl(right.bit_length()) + right
-        }
-    }
-    impl<E: Engine> bellman::Circuit<E> for SHA256PreimageORShiftCircuit {
-        fn synthesize<CS: bellman::ConstraintSystem<E>>(
-            self,
-            cs: &mut CS,
-        ) -> Result<(), bellman::SynthesisError> {
-            // TODO NG
-            //use bellman::ConstraintSystem;
-            use sapling_crypto::circuit::boolean::{AllocatedBit, Boolean};
-            use sapling_crypto::circuit::sha256::sha256_block_no_padding;
-
-            let mut preimage = vec![];
-            let mut shift = vec![];
 
             for &bit in self.preimage.iter() {
                 preimage.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
@@ -347,19 +343,23 @@ fn main() {
 
         let samples: usize = 5;
 
-        // const NUM_BITS: usize = 384;
-        // let params = sapling_crypto::jubjub::JubjubBls12::new();
-        // let circuit = PedersenHashPreimageCircuit {
-        //     preimage: vec![Some(true); NUM_BITS],
-        //     params: &params
-        // };
-
-        let circuit = SHA256PreimageCircuit {
-            preimage: vec![Some(true); 512],
+        const NUM_BITS: usize = 384;
+        let params = sapling_crypto::jubjub::JubjubBls12::new();
+        let circuit = PedersenHashPreimageCircuit {
+            preimage: vec![Some(true); NUM_BITS],
+            params: &params
         };
+
+        // let circuit = SHA256PreimageCircuit {
+        //     preimage: vec![Some(true); 512],
+        // };
 
         println!("creating proof");
         let start = Instant::now();
+        // Bls12: Engine, ChosenBackend: SynthesisDriver
+        // runs AdaptorCircuit::synthesize
+        // which runs circuit.synthesize(adaptor: Adaptor)
+        // Adaptor implements bellman::ConstraintSystem
         let proof = create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs).unwrap();
         println!("done in {:?}", start.elapsed());
 

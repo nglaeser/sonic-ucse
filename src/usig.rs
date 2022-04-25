@@ -50,7 +50,7 @@ impl Updatable<Scalar> for SecretKey {
 }
 impl Updatable<Scalar> for VerificationKey {
     fn update(self, up: Update<Scalar>) -> Self {
-        // for starsig, mu(`op`) b is + b * RISTRETTO_BASEPOINT_POINT
+        // for starsig, `mu(op) up` is `+ up * RISTRETTO_BASEPOINT_POINT`
         // pk_up := (sk * RISTRETTO_BASEPOINT_POINT) + (up_sk * RISTRETTO_BASEPOINT_POINT)
         // correctness:
         // pk_up  = (sk + up_sk) * RISTRETTO_BASEPOINT_POINT

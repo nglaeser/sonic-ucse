@@ -411,3 +411,21 @@ impl<T> OptionExt<T> for Option<T> {
         }
     }
 }
+
+pub fn bool_vec_to_big_int(vec: &Vec<Option<bool>>) -> curv::BigInt {
+    let len = vec.len();
+
+    let mut slice = vec![Some(false);64];
+    let mut out = curv::BigInt::from(0);
+    for i in 0..(len/64) {
+        let start = i*64;
+        let end = (i+1)*64;
+        slice.copy_from_slice(&vec[start..end]);
+
+        // convert slice to u64
+        let tmp: u64 = vec.iter().rev().fold(0,
+            |acc, &b| (acc << 1) + b.unwrap() as u64);
+        out = out + tmp;
+    }
+    out
+}

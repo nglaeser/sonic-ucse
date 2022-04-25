@@ -705,7 +705,7 @@ pub fn create_advice<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
 }
 
 pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: SynthesisDriver>(
-    circuit: &C, // witness
+    circuit: &C, // contains witness
     srs: &SRS<E>
 ) -> Result<Proof<E>, SynthesisError> // where 
 // <E as Engine>::G1Affine: UncompressedEncoding,
@@ -779,6 +779,9 @@ pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: Synthes
         c: vec![],
     };
 
+    // wires: Backend<E> where E: Engine
+    // circuit: Circuit<E>
+    // runs circuit.synthesize(&mut synthesizer: Synthesizer) (synthesis.rs:46)
     S::synthesize(&mut wires, circuit)?;
 
     let n = wires.a.len();
