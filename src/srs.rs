@@ -1,7 +1,9 @@
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, Wnaf};
-use rand::rngs::OsRng;
-use ed25519_dalek::{Keypair,PublicKey};
+// use rand::rngs::OsRng;
+// use ed25519_dalek::{Keypair,PublicKey};
 use elgamal::{ElGamalKeyPair,ElGamalPublicKey,ElGamalPP};
+use starsig::VerificationKey;
+use crate::usig::{Starsig,SecretKey,Sig};
 
 pub struct SRS<E: Engine> {
     pub d: usize,
@@ -30,7 +32,7 @@ pub struct SRS<E: Engine> {
     // alpha*(h^{x^0}, g^{x^{1}}, g^{x^{2}}, ..., g^{x^{d}})
     pub h_positive_x_alpha: Vec<E::G2Affine>,
 
-    pub cpk: PublicKey,
+    pub cpk: VerificationKey,
     pub pk: ElGamalPublicKey,
 }
 
@@ -38,8 +40,9 @@ impl<E: Engine> SRS<E> {
     pub fn dummy(d: usize, _: E::Fr, _: E::Fr) 
     -> Self {
         // generate srs signature keys
-        let mut csprng = OsRng{};
-        let keypair_sig: Keypair = Keypair::generate(&mut csprng);
+        // let mut csprng = OsRng{};
+        let usig = Starsig;
+        let (_sk_sig, pk_sig): (SecretKey, VerificationKey) = usig.kgen();
 
         // generate srs KU-PKE keys
         let lambda: usize = 128;
@@ -62,7 +65,7 @@ impl<E: Engine> SRS<E> {
             h_negative_x_alpha: vec![E::G2Affine::one(); d + 1],
             h_positive_x_alpha: vec![E::G2Affine::one(); d + 1],
 
-            cpk: keypair_sig.public,
+            cpk: pk_sig,
             pk: keypair_pke.pk,
         }
     }
@@ -99,8 +102,9 @@ impl<E: Engine> SRS<E> {
         inv_x_alpha.mul_assign(&alpha);
 
         // generate srs signature keys
-        let mut csprng = OsRng{};
-        let keypair_sig: Keypair = Keypair::generate(&mut csprng);
+        // let mut csprng = OsRng{};
+        let usig = Starsig;
+        let (_sk_sig, pk_sig): (SecretKey, VerificationKey) = usig.kgen();
 
         // generate srs KU-PKE keys
         let lambda: usize = 128;
@@ -121,7 +125,7 @@ impl<E: Engine> SRS<E> {
             h_negative_x_alpha: table(alpha, x_inv, d + 1, &mut g2),
             h_positive_x_alpha: table(alpha, x, d + 1, &mut g2),
 
-            cpk: keypair_sig.public,
+            cpk: pk_sig,
             pk: keypair_pke.pk,
         }
     }
