@@ -40,7 +40,6 @@ impl<E: Engine> SRS<E> {
     pub fn dummy(d: usize, _: E::Fr, _: E::Fr) 
     -> Self {
         // generate srs signature keys
-        // let mut csprng = OsRng{};
         let usig = Starsig;
         let (_sk_sig, pk_sig): (SecretKey, VerificationKey) = usig.kgen();
 
@@ -102,7 +101,6 @@ impl<E: Engine> SRS<E> {
         inv_x_alpha.mul_assign(&alpha);
 
         // generate srs signature keys
-        // let mut csprng = OsRng{};
         let usig = Starsig;
         let (_sk_sig, pk_sig): (SecretKey, VerificationKey) = usig.kgen();
 

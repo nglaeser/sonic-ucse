@@ -3,7 +3,6 @@ extern crate pairing;
 extern crate rand;
 extern crate sapling_crypto;
 extern crate sonic;
-// extern crate schnorr;
 extern crate ed25519_dalek;
 
 use pairing::{Engine, Field, PrimeField};
@@ -216,12 +215,10 @@ fn main() {
 
             let mut preimage = vec![];
 
-            // for bit in PedersenHashPreimageCircuit's preimage (:180)
             for &bit in self.preimage.iter() {
                 preimage.push(Boolean::from(AllocatedBit::alloc(&mut* cs, bit)?));
             }
 
-            // from sapling_crypto::circuit::
             pedersen_hash::pedersen_hash(
                 &mut* cs, pedersen_hash::Personalization::NoteCommitment, &preimage, self.params)?;
 
@@ -245,14 +242,15 @@ fn main() {
     struct PedersenHashPreimageORShiftCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> {
         preimage: Vec<Option<bool>>,
         params: &'a E::Params,
-        shift: Vec<Option<bool>>,
-        cpk_o: Point<E, Subgroup>, // TODO NG this is part of statement not witness
-        // cpk_o_x: Vec<Option<bool>>,
-        // cpk_o_y: Vec<Option<bool>>,
+        shift: Vec<Option<bool>>, // shift is a scalar
+        // TODO NG this is part of statement not witness
+        cpk_o: Point<E, Subgroup>, 
+        // cpk: Point<E, Subgroup>,
+        // digest: Vec<Option<bool>>,
     }
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Statement for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup> {
         fn get_statement(&self) -> &[u8] {
-            b"fake statement instead of hash digest, cpk, cpk_o"
+            b"TODO NG fake statement instead of hash digest, cpk, cpk_o"
         }
     }
     use curv::arithmetic::BitManipulation;
@@ -272,7 +270,6 @@ fn main() {
         {
             //use bellman::ConstraintSystem;
             use sapling_crypto::circuit::boolean::{AllocatedBit, Boolean};
-            use sapling_crypto::circuit::num::Num;
             use sapling_crypto::circuit::pedersen_hash;
 
             let mut preimage = vec![];
@@ -285,7 +282,7 @@ fn main() {
                 shift.push(Boolean::from(AllocatedBit::alloc(&mut* cs, bit)?));
             }
             let cpk_o_point_xy: (E::Fr, E::Fr) = self.cpk_o.into_xy();
-            // create AllocatedNum and then convert back to e.g. E::Fr
+            // create AllocatedNum and then convert back to Edwards point
             let cpk_o_point_x = AllocatedNum::alloc(
                 cs.namespace(|| "cpk_o x"),
                 || {
@@ -298,37 +295,6 @@ fn main() {
                     Ok(cpk_o_point_xy.1)
                 }
             );
-            use sapling_crypto::{circuit::ecc::MontgomeryPoint,jubjub::montgomery};
-            use sapling_crypto::jubjub::{PrimeOrder,Unknown};
-
-            // attempt 2a
-            // let montgomery = MontgomeryPoint::<E> {
-            //     x: Num::<E>::from(cpk_o_point_x.unwrap()),
-            //     y: Num::<E>::from(cpk_o_point_y.unwrap()),
-            // };
-
-            // TODO NG check the order using https://docs.rs/curve25519-dalek/latest/src/curve25519_dalek/edwards.rs.html#1158
-            // attempt 2
-            // (2b)
-            // let montgomery = montgomery::Point::<E,PrimeOrder> {
-            //     x: cpk_o_point_x.unwrap().get_value().unwrap(),
-            //     y: cpk_o_point_y.unwrap().get_value().unwrap() 
-            // };
-            // let cpk_o_point = montgomery.into_edwards(&mut* cs, self.params).unwrap();
-
-            // attempt 1
-            // let cpk_o_point = EdwardsPoint::<E> { 
-            //     // x: cpk_o_point_x.unwrap().get_value().unwrap(),
-            //     // y: cpk_o_point_y.unwrap().get_value().unwrap() 
-            //     x: cpk_o_point_x.unwrap(),
-            //     y: cpk_o_point_y.unwrap(),
-            // };
-            // TODO NG EdwardsPoints and MontgomeryPoints have non-public fields so idk how they can be instantiated with particular values
-
-            // attempt 3 (TODO NG)
-            // let cpk_o_point = EdwardsPoint::<E>::zero();
-
-            // attempt 4
             let cpk_o_point = EdwardsPoint::<E>::interpret(
                 &mut *cs, 
                 &cpk_o_point_x.unwrap(),
@@ -339,7 +305,7 @@ fn main() {
             // TODO NG add OR
             cpk_o_point.mul(
                 cs.namespace(|| format!("multiplication of shift to cpk_o")),
-                &shift, // &[Boolean] representing a scalar
+                &shift,
                 self.params
             )?;
             pedersen_hash::pedersen_hash(
@@ -356,7 +322,7 @@ fn main() {
 
     impl Statement for SHA256PreimageCircuit {
         fn get_statement(&self) -> &[u8] {
-            b"fake statement instead of hash digest"
+            b"TODO NG fake statement instead of hash digest"
         }
     }
     impl BigIntable for SHA256PreimageCircuit {
@@ -395,21 +361,13 @@ fn main() {
         let srs_x = Fr::from_str("23923").unwrap();
         let srs_alpha = Fr::from_str("23728792").unwrap();
 
-        // generate srs signature keys
-        // let mut csprng = OsRng{};
-        // let keypair_sig: Keypair = Keypair::generate(&mut csprng);
-
-        // generate srs KU-PKE keys
-        // let lambda: usize = 128;
-        // let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
-        // let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
-
         println!("making srs");
         let start = Instant::now();
         // TODO NG why create a dummy srs and not a real one?
-        // srs.rs:32
-        let srs = SRS::<Bls12>::dummy(830564, // d
+        let srs = SRS::<Bls12>::dummy(830564,
             srs_x, srs_alpha);
+        // let srs = SRS::<Bls12>::new(830564,
+        //     srs_x, srs_alpha);
         println!("done in {:?}", start.elapsed());
 
         type ChosenBackend = Permutation3;
@@ -419,6 +377,7 @@ fn main() {
         const NUM_BITS: usize = 384;
         let params = sapling_crypto::jubjub::JubjubBls12::new();
         // TODO NG convert from curve25519_dalek::ristretto::RistrettoPoint to sapling_crypto::jubjub::edwards::Point
+        // and check the order using https://docs.rs/curve25519-dalek/latest/src/curve25519_dalek/edwards.rs.html#1158
         // let cpk_o_sapling = srs.cpk.into_point().decompress().unwrap();
         let cpk_o_sapling: Point<_, PrimeOrder> = Point::zero(); // TODO NG should cpk_o = srs.cpk?
         let circuit = PedersenHashPreimageORShiftCircuit {
@@ -427,14 +386,6 @@ fn main() {
             shift: vec![Some(true); NUM_BITS], // TODO NG how many bits in shift?
             cpk_o: cpk_o_sapling,
         };
-        // let circuit = PedersenHashPreimageCircuit {
-        //     preimage: vec![Some(true); NUM_BITS],
-        //     params: &params
-        // };
-
-        // let circuit = SHA256PreimageCircuit {
-        //     preimage: vec![Some(true); 512],
-        // };
 
         println!("creating proof");
         let start = Instant::now();
