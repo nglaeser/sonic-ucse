@@ -2,15 +2,15 @@ extern crate bellman;
 extern crate pairing;
 extern crate rand;
 extern crate sapling_crypto;
-extern crate sonic;
+extern crate sonic_ucse;
 extern crate ed25519_dalek;
 
 use pairing::{Engine, Field, PrimeField};
-use sonic::protocol::*;
-use sonic::srs::SRS;
-use sonic::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff, BigIntable, Statement};
-use sonic::synthesis::*;
-use sonic::util::bool_vec_to_big_int;
+use sonic_ucse::protocol::*;
+use sonic_ucse::srs::SRS;
+use sonic_ucse::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff, BigIntable, Statement};
+use sonic_ucse::synthesis::*;
+use sonic_ucse::util::bool_vec_to_big_int;
 use std::marker::PhantomData;
 
 struct Adaptor<'a, E: Engine, CS: ConstraintSystem<E> + 'a> {
@@ -145,7 +145,7 @@ impl<'a, E: Engine, CS: ConstraintSystem<E> + 'a> bellman::ConstraintSystem<E>
 
 struct AdaptorCircuit<T>(T);
 
-// implement sonic::Circuit trait (lib.rs:16) for AdaptorCircuit struct defined above
+// implement sonic_ucse::Circuit trait (lib.rs:16) for AdaptorCircuit struct defined above
 impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircuit<C> {
     fn synthesize<CS: ConstraintSystem<E>>(&self, cs: &mut CS) -> Result<(), SynthesisError> {
         let mut adaptor = Adaptor {

@@ -1,6 +1,11 @@
 # Sonic UC-SE
 
-This crate is an implementation of **Sonic**, a protocol for quickly verifiable, compact zero-knowledge proofs of arbitrary computations. Sonic is intended to be an alternative to zk-SNARKs which typically require a trusted setup for each individual computation. Sonic is _universal_ in that it requires a single setup, and _updateable_ in that the parameters can be continually strengthened. In exchange, Sonic proofs are slightly longer and slightly slower to verify in practice.
+This crate is a UC-secure and simulation extractable (SE) version of [Sonic](https://github.com/ebfull/sonic), an _updatable_ zk-SNARK protocol. We do this by using a generic transformation that turns any sound NIZK into a _simulation extractable_ NIZK -- in a UC-secure way. The transformation changes the NIZK's language from { (y,x) | y = H(x) } to { ((y,h), (x,r)) | y = H(x) OR h = g^r } and the proof consists of:
+- an _updatable signature_ ([starsig](./starsig/)) on a one-time signature public key, 
+- an _updatable encryption_ ([rust-elgamal](./rust-elgamal/)) of the base scheme's witness,
+- a NIZK for the new language using the base protocol (Sonic) and the base statement/witness pair (i.e., using the left branch of the OR),
+- a one-time signature ([lamport-sigs](https://lib.rs/crates/lamport_sigs)) on the above NIZK (using the secret key corresponding to the above one-time public key), the base statement y, and the above updatable signature, updatable ciphertext, and updatable encryption public key, and
+- the public keys of the updatable and one-time signature schemes
 
 **THIS IMPLEMENTATION IS A PROTOTYPE AND IS FULL OF BUGS, DO NOT USE IT IN PRODUCTION**
 
@@ -8,7 +13,12 @@ This crate is an implementation of **Sonic**, a protocol for quickly verifiable,
 
 ```
 cargo build
+
+# test the UC-SE NIZK scheme
 cargo run --example paper
+
+# test the new building blocks
+cargo run --example ucse-test
 ```
 
 Documentation:

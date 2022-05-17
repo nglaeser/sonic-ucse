@@ -1,8 +1,8 @@
-extern crate sonic;
+extern crate sonic_ucse;
 
-use sonic::protocol::*;
-use sonic::kupke::{KeyUpdate,SKeyUpdate};
-use sonic::usig::*;
+use sonic_ucse::protocol::*;
+use sonic_ucse::kupke::{KeyUpdate,SKeyUpdate};
+use sonic_ucse::usig::*;
 use lamport_sigs;
 use ring::digest::SHA256;
 use curv::BigInt;
