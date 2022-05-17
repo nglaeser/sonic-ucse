@@ -256,10 +256,12 @@ fn main() {
     use curv::arithmetic::BitManipulation;
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> BigIntable for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup> {
         fn to_big_int(&self) -> curv::BigInt {
-            let left = bool_vec_to_big_int(&self.preimage);
-            let right = bool_vec_to_big_int(&self.shift);
+            // TODO NG the below breaks elgamal::ElGamal::encrypt(&circuit.to_big_int(), &srs.pk) (outputs Err)
+            // let left = bool_vec_to_big_int(&self.preimage);
+            // let right = bool_vec_to_big_int(&self.shift);
+            // (left << right.bit_length()) + right
 
-            (left << right.bit_length()) + right
+            bool_vec_to_big_int(&self.preimage)
         }
     }
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E> for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup> {
