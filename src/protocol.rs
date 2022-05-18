@@ -1256,6 +1256,7 @@ impl<'a, E: Engine> Backend<E> for &'a mut SxEval<E> {
 }
 
 #[test]
+#[ignore]
 fn my_fun_circuit_test() {
     use pairing::bls12_381::{Bls12, Fr};
     use pairing::PrimeField;
@@ -1281,6 +1282,16 @@ fn my_fun_circuit_test() {
             //cs.enforce_zero(LinearCombination::from(b) - multiplier);
 
             Ok(())
+        }
+    }
+    impl Statement for MyCircuit {
+        fn get_statement(&self) -> &[u8] {
+            b""
+        }
+    }
+    impl BigIntable for MyCircuit {
+        fn to_big_int(&self) -> curv::BigInt {
+            curv::BigInt::from(0)
         }
     }
 

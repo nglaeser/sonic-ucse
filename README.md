@@ -4,7 +4,7 @@ This crate is a UC-secure and simulation extractable (SE) version of [Sonic](htt
 - an _updatable signature_ (based on a [fork of starsig](https://github.com/nglaeser/starsig)) on a one-time signature public key, 
 - an _updatable encryption_ (based on [rust-elgamal](https://github.com/ZenGo-X/rust-elgamal)) of the base scheme's witness,
 - a NIZK for the new language using the base protocol (Sonic) and the base statement/witness pair (i.e., using the left branch of the OR),
-- a one-time signature ([lamport-sigs](https://lib.rs/crates/lamport_sigs)) on the above NIZK (using the secret key corresponding to the above one-time public key), the base statement y, and the above updatable signature, updatable ciphertext, and updatable encryption public key, and
+- a one-time signature ([lamport-sigs](https://lib.rs/crates/lamport_sigs)) on the above NIZK, the base statement y, and the above updatable signature, updatable ciphertext, and updatable encryption public key, using the secret key corresponding to the above one-time public key, and
 - the public keys of the updatable and one-time signature schemes
 
 **THIS IMPLEMENTATION IS A PROTOTYPE AND IS FULL OF BUGS, DO NOT USE IT IN PRODUCTION**
@@ -14,11 +14,16 @@ This crate is a UC-secure and simulation extractable (SE) version of [Sonic](htt
 ```
 cargo build
 
-# test the UC-SE NIZK scheme
+# run the UC-SE NIZK scheme
 cargo run --example paper
 
 # test the new building blocks
-cargo run --example ucse-test
+cargo test kupke
+cargo test usig
+cargo test ot_sig
+cargo test to_bytes
+# or simply
+cargo test
 ```
 
 Documentation:
