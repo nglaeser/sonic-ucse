@@ -15,11 +15,17 @@ bellman = "0.1.0"
 lamport_sigs = "0.7.0"
 ring = "0.16.15"
 ed25519-dalek = "1"
-elgamal = { path = "rust-elgamal" }
 curv-kzen = "0.9.0"
 curve25519-dalek = "3.2.1"
-starsig = { path = "starsig" }
 
 [dependencies.sapling-crypto]
 git = "https://github.com/zcash-hackworks/sapling-crypto"
 rev = "eb409fa3cf8df215ae8d35f5e385751a0c5ffb85"
+
+[dependencies.elgamal]
+git = "https://github.com/ZenGo-X/rust-elgamal"
+rev = "3d6ef02da517ad1b8ec72a6f6fd7dcccab296cd3"
+
+[dependencies.starsig]
+git = "https://github.com/nglaeser/starsig"
+rev = "2727a3b9331eea48316b95d4f72f95a8a918f2c6"

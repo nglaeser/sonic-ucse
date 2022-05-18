@@ -1,6 +1,0 @@
-[submodule "rust-elgamal"]
-	path = rust-elgamal
-	url = https://github.com/ZenGo-X/rust-elgamal.git
-[submodule "starsig"]
-	path = starsig
-	url = https://github.com/nglaeser/starsig.git
