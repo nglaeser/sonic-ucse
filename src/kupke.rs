@@ -20,9 +20,7 @@ pub trait Serialize {
 }
 impl Serialize for ElGamalCiphertext {
     fn to_bytes(&self) -> Vec<u8> {
-        let mut res: Vec<u8> = self.c1.to_bytes();
-        res.append(&mut self.c2.to_bytes());
-        res
+        [self.c1.to_bytes(), self.c2.to_bytes()].concat()
     }
 }
 

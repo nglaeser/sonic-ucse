@@ -43,28 +43,17 @@ impl<A: CurveAffine, F: pairing::PrimeField> SonicProof<A,F> {
     pub fn to_bytes(&self) -> Vec<u8> {
         let r_bytes = &self.r.into_uncompressed();
         let t_bytes = &self.t.into_uncompressed();
+
         let rz_repr = &self.rz.into_repr();
-        let mut rz_bytes: Vec<u8> = vec![];
-        for rz in rz_repr.as_ref() {
-            rz_bytes.append(&mut u64_to_u8_vec(*rz));
-        }
+        let rz_bytes: Vec<u8> = rz_repr.as_ref().into_iter().flat_map(u64_to_u8_vec).collect();
+
         let rzy_repr = &self.rzy.into_repr();
-        let mut rzy_bytes: Vec<u8> = vec![];
-        for rzy in rzy_repr.as_ref() {
-            rzy_bytes.append(&mut u64_to_u8_vec(*rzy));
-        }
+        let rzy_bytes: Vec<u8> = rzy_repr.as_ref().into_iter().flat_map(u64_to_u8_vec).collect();
+
         let z_opening_bytes = &self.z_opening.into_uncompressed();
         let zy_opening_bytes = &self.zy_opening.into_uncompressed();
 
-        let mut res: Vec<u8> = vec![];
-        res.extend_from_slice(r_bytes.as_ref());
-        res.extend_from_slice(t_bytes.as_ref());
-        res.extend_from_slice(&rz_bytes);
-        res.extend_from_slice(&rzy_bytes);
-        res.extend_from_slice(z_opening_bytes.as_ref());
-        res.extend_from_slice(zy_opening_bytes.as_ref());
-        res
-        // res[0..res.len()] //.try_into().expect("slice with incorrect length")
+        [r_bytes.as_ref(), t_bytes.as_ref(), &rz_bytes, &rzy_bytes, z_opening_bytes.as_ref(), zy_opening_bytes.as_ref()].concat()
     }
 }
 
@@ -964,7 +953,7 @@ pub fn create_proof<E: Engine,C: Statement + BigIntable + Circuit<E>, S: Synthes
         r, rz, rzy, t, z_opening, zy_opening,
     };
     let message2: Vec<u8> = to_bytes(&sonic_proof, circuit, &c, &pk_l, sigma);
-    let sigma_ot = sk_ot.sign(&message2[0..message2.len()]);
+    let sigma_ot = sk_ot.sign(&message2[..]);
 
     Ok(Proof {
         c,

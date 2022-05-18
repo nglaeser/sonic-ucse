@@ -31,6 +31,7 @@ use ed25519_dalek::{PublicKey,Signature,Verifier};
 //
 // ... and checking that the result is the identity in the target group.
 // This is checking pcV (?)
+type Proof<E> = SonicProof<<E as Engine>::G1Affine, <E as Engine>::Fr>;
 pub struct Batch<E: Engine> {
     alpha_x: Vec<(E::G1Affine, E::Fr)>,
     alpha_x_precomp: <E::G2Affine as CurveAffine>::Prepared,
@@ -55,7 +56,7 @@ pub struct Batch<E: Engine> {
     sigma: Vec<Signature>,
     pk_ot: Vec<lamport_sigs::PublicKey>,
     sigma_ot: Vec<Result<Vec<Vec<u8>>, &'static str>>,
-    underlying_proof: Vec<SonicProof<E::G1Affine, E::Fr>>, // TODO NG use generic type
+    underlying_proof: Vec<Proof<E>>,
 }
 
 impl<E: Engine> Batch<E> {
@@ -134,7 +135,7 @@ impl<E: Engine> Batch<E> {
     }
 
     // TODO NG use generic type instead of SonicProof
-    pub fn add_underlying_proof(&mut self, proof: SonicProof<<E as Engine>::G1Affine,<E as Engine>::Fr>) {
+    pub fn add_underlying_proof(&mut self, proof: Proof<E>) {
         self.underlying_proof.push(proof);
     }
 
@@ -144,28 +145,32 @@ impl<E: Engine> Batch<E> {
         {
             use crate::util::to_bytes;
 
-            let mut i=0;
-            for pk in &self.pk_l {
-                let message: &[u8] = &self.pk_ot[i].to_bytes();
-                if !pk.verify(message,&self.sigma[i]).is_ok() { return false }
-                i+=1;
+            for ((pk, pk_ot), sigma) in self.pk_l
+                .iter()
+                .zip(self.pk_ot.iter())
+                .zip(self.sigma.iter()) {
+                let message: &[u8] = &pk_ot.to_bytes();
+                if !pk.verify(message, sigma).is_ok() { return false }
             }
-            let mut i = 0;
-            for pk in self.pk_ot {
-                let message: Vec<u8> = to_bytes(
-                    &self.underlying_proof[i],
+            for (((((pk, underlying_proof), c), pk_l), sigma), sigma_ot) in self.pk_ot
+                .iter()
+                .zip(self.underlying_proof.iter())
+                .zip(self.c.iter())
+                .zip(self.pk_l.iter())
+                .zip(self.sigma.iter())
+                .zip(self.sigma_ot.iter()) {
+                let message: &[u8] = &to_bytes(
+                    underlying_proof,
                     x,
-                    &self.c[i],
-                    &self.pk_l[i],
-                    self.sigma[i],
+                    c,
+                    pk_l,
+                    *sigma
                 );
-                // if !&self.sigma_ot[i].is_ok_and(|&x| pk.verify_signature(x,message)) { return false }
-                let sigma_ot_valid = match &self.sigma_ot[i] {
-                    Ok(sig) => pk.verify_signature(sig,&message[0..message.len()]),
+                let sigma_ot_valid = match &sigma_ot {
+                    Ok(sig) => pk.verify_signature(sig,&message[..]),
                     Err(_) => false
                 };
                 if !sigma_ot_valid { return false }
-                i+=1;
             }
         }
 

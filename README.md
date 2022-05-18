@@ -18,11 +18,9 @@ cargo build
 cargo run --example paper
 
 # test the new building blocks
-cargo test kupke
-cargo test usig
-cargo test ot_sig
-cargo test to_bytes
-# or simply
+cargo test --test uc-se
+
+# all tests
 cargo test
 ```
 

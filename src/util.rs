@@ -15,28 +15,18 @@ pub fn to_bytes<
 -> Vec<u8> {
     let sonic_bytes: &[u8] = &pi.to_bytes();
     let x_bytes: &[u8] = x.get_statement();
-    let mut c_bytes: Vec<u8> = c.to_bytes();
+    let c_bytes: Vec<u8> = c.to_bytes();
     let pk_l_bytes: [u8; 32] = pk_l.to_bytes();
     let sigma_bytes: [u8; 64] = sigma.to_bytes();
 
-    let mut res: Vec<u8> = Vec::<u8>::with_capacity(448);
-    res.extend_from_slice(sonic_bytes);
-    res.extend_from_slice(x_bytes);
-    res.append(&mut c_bytes);
-    res.extend_from_slice(&pk_l_bytes);
-    res.extend_from_slice(&sigma_bytes);
-    res
+    [sonic_bytes, x_bytes, &c_bytes, &pk_l_bytes, &sigma_bytes].concat()
 }
-pub fn u64_to_u8_vec(x: u64) -> Vec<u8> {
-    let b1 : u8 = ((x >> 56) & 0xff) as u8;
-    let b2 : u8 = ((x >> 48) & 0xff) as u8;
-    let b3 : u8 = ((x >> 40) & 0xff) as u8;
-    let b4 : u8 = ((x >> 32) & 0xff) as u8;
-    let b5 : u8 = ((x >> 24) & 0xff) as u8;
-    let b6 : u8 = ((x >> 16) & 0xff) as u8;
-    let b7 : u8 = ((x >> 8) & 0xff) as u8;
-    let b8 : u8 = (x & 0xff) as u8;
-    vec![b1, b2, b3, b4, b5, b6, b7, b8]
+pub fn u64_to_u8_vec(x: &u64) -> Vec<u8> {
+    use byteorder::{ByteOrder, BigEndian};
+
+    let mut buf = [0; 8];
+    BigEndian::write_u64(&mut buf, *x);
+    [buf].concat()
 }
 
 pub trait TranscriptProtocol {

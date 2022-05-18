@@ -17,6 +17,7 @@ ring = "0.16.15"
 ed25519-dalek = "1"
 curv-kzen = "0.9.0"
 curve25519-dalek = "3.2.1"
+byteorder = "1.4.3"
 
 [dependencies.sapling-crypto]
 git = "https://github.com/zcash-hackworks/sapling-crypto"

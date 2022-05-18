@@ -21,6 +21,8 @@ use starsig::{Signature,VerificationKey,StarsigError};
 // starsig secret key
 #[derive(Copy,Clone)]
 pub struct SecretKey {
+    // from group of prime order l = 2^252 + 27742317777372353535851937790883648493
+    // (ristretto 255)
     pub scalar: Scalar,
 }
 impl SecretKey {
