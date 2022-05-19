@@ -388,17 +388,40 @@ fn main() {
 
         let samples: usize = 5;
 
-        const NUM_BITS: usize = 384;
+        const PEDERSEN_PREIMAGE_BITS: usize = 384;
+        const JUBJUB_SCALAR_BITS: u32 = Fr::NUM_BITS;
+        let _DALEK_SCALAR_BITS: usize =
+            curve25519_dalek::scalar::Scalar::one().as_bytes().len() * 8;
+
         let params = sapling_crypto::jubjub::JubjubBls12::new();
-        // TODO NG convert from curve25519_dalek::ristretto::RistrettoPoint to sapling_crypto::jubjub::edwards::Point
-        // and check the order using https://docs.rs/curve25519-dalek/latest/src/curve25519_dalek/edwards.rs.html#1158
-        // let cpk_o_sapling = srs.cpk.into_point().decompress().unwrap();
-        let cpk_o_sapling: Point<_, PrimeOrder> = Point::zero(); // TODO NG should cpk_o = srs.cpk?
+
+        /*
+        TODO NG: need to input cpk_o (and cpk) into the circuit as `sapling_crypto::jubjub::edwards::Point`s. The circuit will check for some (scalar) witness w := shift that cpk_o * shift = cpk (remember ECs are additive groups).
+
+        The problem is that cpk, cpk_o are kupke public keys, and that implementation uses rust-elgamal which is built on curve25519. This means that they are elements of (the Ristretto group of) curve25519, *not* the jubjub group used by the circuit! These are different (sub)groups, with different order, and afaik there is no generic way to convert between different elliptic curve groups of different order.
+
+        Possible solutions:
+        - Use a non-BB approach to convert between the groups, something like this: https://crypto.stackexchange.com/questions/89362/is-there-any-way-to-mapping-point-between-2-elliptic-curves. The idea is to convert cpk, cpk_o to elements *of the same order* on the other curve. But finding these elements of the same order looks like it could be very inefficient (brute force?). (A way to check order on curve25519 is given here: https://docs.rs/curve25519-dalek/latest/src/curve25519_dalek/edwards.rs.html#1158.)
+        - Switch to a jubjub-based ElGamal, since changing the curve over which the Sonic circuit operates would be a pain in the ass (if not nigh on impossible; anyway, it would wreck any one-to-one comparison to previous work). Here is an implementation of ElGamal for Jubjub (would still have to add updatability): https://github.com/dusk-network/ElGamal.
+        */
+
+        // let cpk_o_jubjub = srs.cpk.into_point().decompress().unwrap();
+
+        // let cpk_o_dalek = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT.0;
+        // let cpk_o_jubjub: Point<_, PrimeOrder> = sapling_crypto::jubjub::edwards::Point {
+        //     x: cpk_o_dalek.X,
+        //     y: cpk_o_dalek.Y,
+        //     z: cpk_o_dalek.Z,
+        //     t: cpk_o_dalek.T,
+        //     _marker: PhantomData,
+        // };
+
+        let cpk_o_jubjub: Point<_, PrimeOrder> = Point::zero(); // TODO NG should be cpk_o = generator of prime order subgroup (of Jubjub)
         let circuit = PedersenHashPreimageORShiftCircuit {
-            preimage: vec![Some(true); NUM_BITS],
+            preimage: vec![Some(true); PEDERSEN_PREIMAGE_BITS],
             params: &params,
-            shift: vec![Some(true); NUM_BITS], // TODO NG how many bits in shift?
-            cpk_o: cpk_o_sapling,
+            shift: vec![Some(true); std::convert::TryInto::try_into(JUBJUB_SCALAR_BITS).unwrap()],
+            cpk_o: cpk_o_jubjub,
         };
 
         println!("creating proof");
