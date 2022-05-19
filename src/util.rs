@@ -1,18 +1,19 @@
+use crate::kupke::Serialize;
+use crate::protocol::SonicProof;
+use crate::Statement;
 use crate::SynthesisError;
+use ed25519_dalek::{PublicKey, Signature};
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, PrimeFieldRepr};
 use std::io;
-use crate::protocol::SonicProof;
-use crate::Statement;
-use crate::kupke::Serialize;
-use ed25519_dalek::{Signature,PublicKey};
 
-pub fn to_bytes<
-    A: CurveAffine,
-    F: pairing::PrimeField
->(pi: &SonicProof<A,F>, x: &dyn Statement, c: &elgamal::ElGamalCiphertext, pk_l: &PublicKey, 
-    sigma: Signature)
--> Vec<u8> {
+pub fn to_bytes<A: CurveAffine, F: pairing::PrimeField>(
+    pi: &SonicProof<A, F>,
+    x: &dyn Statement,
+    c: &elgamal::ElGamalCiphertext,
+    pk_l: &PublicKey,
+    sigma: Signature,
+) -> Vec<u8> {
     let sonic_bytes: &[u8] = &pi.to_bytes();
     let x_bytes: &[u8] = x.get_statement();
     let c_bytes: Vec<u8> = c.to_bytes();
@@ -22,7 +23,7 @@ pub fn to_bytes<
     [sonic_bytes, x_bytes, &c_bytes, &pk_l_bytes, &sigma_bytes].concat()
 }
 pub fn u64_to_u8_vec(x: &u64) -> Vec<u8> {
-    use byteorder::{ByteOrder, BigEndian};
+    use byteorder::{BigEndian, ByteOrder};
 
     let mut buf = [0; 8];
     BigEndian::write_u64(&mut buf, *x);
@@ -236,7 +237,7 @@ where
 
 #[test]
 fn laurent_division() {
-    use pairing::bls12_381::{Fr};
+    use pairing::bls12_381::Fr;
     use pairing::PrimeField;
 
     let mut poly = vec![
@@ -405,16 +406,18 @@ impl<T> OptionExt<T> for Option<T> {
 pub fn bool_vec_to_big_int(vec: &Vec<Option<bool>>) -> curv::BigInt {
     let len = vec.len();
 
-    let mut slice = vec![Some(false);64];
+    let mut slice = vec![Some(false); 64];
     let mut out = curv::BigInt::from(0);
-    for i in 0..(len/64) {
-        let start = i*64;
-        let end = (i+1)*64;
+    for i in 0..(len / 64) {
+        let start = i * 64;
+        let end = (i + 1) * 64;
         slice.copy_from_slice(&vec[start..end]);
 
         // convert slice to u64
-        let tmp: u64 = vec.iter().rev().fold(0,
-            |acc, &b| (acc << 1) + b.unwrap() as u64);
+        let tmp: u64 = vec
+            .iter()
+            .rev()
+            .fold(0, |acc, &b| (acc << 1) + b.unwrap() as u64);
         out = out + tmp;
     }
     out

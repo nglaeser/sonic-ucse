@@ -1,7 +1,7 @@
+use crate::{Circuit, Coeff, ConstraintSystem, LinearCombination, SynthesisError, Variable};
 use pairing::{Engine, Field};
-use crate::{ConstraintSystem, SynthesisError, Variable, LinearCombination, Coeff, Circuit};
-use std::marker::PhantomData;
 use std::iter::Peekable;
+use std::marker::PhantomData;
 
 /// This is a backend for the `SynthesisDriver` to relay information about
 /// the concrete circuit. One backend might just collect basic information
@@ -11,38 +11,56 @@ pub trait Backend<E: Engine> {
     type LinearConstraintIndex;
 
     /// Get the value of a variable. Can return None if we don't know.
-    fn get_var(&self, _variable: Variable) -> Option<E::Fr> { None }
+    fn get_var(&self, _variable: Variable) -> Option<E::Fr> {
+        None
+    }
 
     /// Set the value of a variable. Might error if this backend expects to know it.
     fn set_var<F>(&mut self, _variable: Variable, _value: F) -> Result<(), SynthesisError>
-        where F: FnOnce() -> Result<E::Fr, SynthesisError> { Ok(()) }
+    where
+        F: FnOnce() -> Result<E::Fr, SynthesisError>,
+    {
+        Ok(())
+    }
 
     /// Create a new multiplication gate.
-    fn new_multiplication_gate(&mut self) { }
+    fn new_multiplication_gate(&mut self) {}
 
     /// Create a new linear constraint, returning the power of Y for caching purposes.
     fn new_linear_constraint(&mut self) -> Self::LinearConstraintIndex;
 
     /// Insert a term into a linear constraint. TODO: bad name of function
-    fn insert_coefficient(&mut self, _var: Variable, _coeff: Coeff<E>, _y: &Self::LinearConstraintIndex) { }
+    fn insert_coefficient(
+        &mut self,
+        _var: Variable,
+        _coeff: Coeff<E>,
+        _y: &Self::LinearConstraintIndex,
+    ) {
+    }
 
     /// Compute a `LinearConstraintIndex` from `q`.
     fn get_for_q(&self, q: usize) -> Self::LinearConstraintIndex;
 
     /// Mark y^{_index} as the power of y cooresponding to the public input
     /// coefficient for the next public input, in the k(Y) polynomial.
-    fn new_k_power(&mut self, _index: usize) { }
+    fn new_k_power(&mut self, _index: usize) {}
 }
 
 /// This is an abstraction which synthesizes circuits.
 pub trait SynthesisDriver {
-    fn synthesize<E: Engine, C: Circuit<E>, B: Backend<E>>(backend: B, circuit: &C) -> Result<(), SynthesisError>;
+    fn synthesize<E: Engine, C: Circuit<E>, B: Backend<E>>(
+        backend: B,
+        circuit: &C,
+    ) -> Result<(), SynthesisError>;
 }
 
 pub struct Basic;
 
 impl SynthesisDriver for Basic {
-    fn synthesize<E: Engine, C: Circuit<E>, B: Backend<E>>(backend: B, circuit: &C) -> Result<(), SynthesisError> {
+    fn synthesize<E: Engine, C: Circuit<E>, B: Backend<E>>(
+        backend: B,
+        circuit: &C,
+    ) -> Result<(), SynthesisError> {
         struct Synthesizer<E: Engine, B: Backend<E>> {
             backend: B,
             current_variable: Option<usize>,
@@ -56,7 +74,7 @@ impl SynthesisDriver for Basic {
 
             fn alloc<F>(&mut self, value: F) -> Result<Variable, SynthesisError>
             where
-                F: FnOnce() -> Result<E::Fr, SynthesisError>
+                F: FnOnce() -> Result<E::Fr, SynthesisError>,
             {
                 match self.current_variable.take() {
                     Some(index) => {
@@ -76,14 +94,13 @@ impl SynthesisDriver for Basic {
                             Ok(value_b)
                         })?;
 
-                        self.backend.set_var(var_c, || {
-                            product.ok_or(SynthesisError::AssignmentMissing)
-                        })?;
+                        self.backend
+                            .set_var(var_c, || product.ok_or(SynthesisError::AssignmentMissing))?;
 
                         self.current_variable = None;
 
                         Ok(var_b)
-                    },
+                    }
                     None => {
                         self.n += 1;
                         let index = self.n;
@@ -102,7 +119,7 @@ impl SynthesisDriver for Basic {
 
             fn alloc_input<F>(&mut self, value: F) -> Result<Variable, SynthesisError>
             where
-                F: FnOnce() -> Result<E::Fr, SynthesisError>
+                F: FnOnce() -> Result<E::Fr, SynthesisError>,
             {
                 let input_var = self.alloc(value)?;
 
@@ -112,8 +129,7 @@ impl SynthesisDriver for Basic {
                 Ok(input_var)
             }
 
-            fn enforce_zero(&mut self, lc: LinearCombination<E>)
-            {
+            fn enforce_zero(&mut self, lc: LinearCombination<E>) {
                 self.q += 1;
                 let y = self.backend.new_linear_constraint();
 
@@ -122,9 +138,12 @@ impl SynthesisDriver for Basic {
                 }
             }
 
-            fn multiply<F>(&mut self, values: F) -> Result<(Variable, Variable, Variable), SynthesisError>
+            fn multiply<F>(
+                &mut self,
+                values: F,
+            ) -> Result<(Variable, Variable, Variable), SynthesisError>
             where
-                F: FnOnce() -> Result<(E::Fr, E::Fr, E::Fr), SynthesisError>
+                F: FnOnce() -> Result<(E::Fr, E::Fr, E::Fr), SynthesisError>,
             {
                 self.n += 1;
                 let index = self.n;
@@ -146,13 +165,11 @@ impl SynthesisDriver for Basic {
                     Ok(a)
                 })?;
 
-                self.backend.set_var(b, || {
-                    b_val.ok_or(SynthesisError::AssignmentMissing)
-                })?;
+                self.backend
+                    .set_var(b, || b_val.ok_or(SynthesisError::AssignmentMissing))?;
 
-                self.backend.set_var(c, || {
-                    c_val.ok_or(SynthesisError::AssignmentMissing)
-                })?;
+                self.backend
+                    .set_var(c, || c_val.ok_or(SynthesisError::AssignmentMissing))?;
 
                 Ok((a, b, c))
             }
@@ -170,11 +187,13 @@ impl SynthesisDriver for Basic {
             n: 0,
         };
 
-        let one = tmp.alloc_input(|| Ok(E::Fr::one())).expect("should have no issues");
+        let one = tmp
+            .alloc_input(|| Ok(E::Fr::one()))
+            .expect("should have no issues");
 
         match (one, <Synthesizer<E, B> as ConstraintSystem<E>>::ONE) {
-            (Variable::A(1), Variable::A(1)) => {},
-            _ => panic!("one variable is incorrect")
+            (Variable::A(1), Variable::A(1)) => {}
+            _ => panic!("one variable is incorrect"),
         }
 
         circuit.synthesize(&mut tmp)?;
@@ -252,7 +271,10 @@ pub struct Permutation3;
 const M: usize = 3;
 
 impl SynthesisDriver for Permutation3 {
-    fn synthesize<E: Engine, C: Circuit<E>, B: Backend<E>>(backend: B, circuit: &C) -> Result<(), SynthesisError> {
+    fn synthesize<E: Engine, C: Circuit<E>, B: Backend<E>>(
+        backend: B,
+        circuit: &C,
+    ) -> Result<(), SynthesisError> {
         struct Synthesizer<E: Engine, B: Backend<E>> {
             backend: B,
             current_variable: Option<usize>,
@@ -274,7 +296,7 @@ impl SynthesisDriver for Permutation3 {
 
             fn alloc<F>(&mut self, value: F) -> Result<Variable, SynthesisError>
             where
-                F: FnOnce() -> Result<E::Fr, SynthesisError>
+                F: FnOnce() -> Result<E::Fr, SynthesisError>,
             {
                 match self.current_variable.take() {
                     Some(index) => {
@@ -294,14 +316,13 @@ impl SynthesisDriver for Permutation3 {
                             Ok(value_b)
                         })?;
 
-                        self.backend.set_var(var_c, || {
-                            product.ok_or(SynthesisError::AssignmentMissing)
-                        })?;
+                        self.backend
+                            .set_var(var_c, || product.ok_or(SynthesisError::AssignmentMissing))?;
 
                         self.current_variable = None;
 
                         Ok(var_b)
-                    },
+                    }
                     None => {
                         self.n += 1;
                         let index = self.n;
@@ -325,7 +346,7 @@ impl SynthesisDriver for Permutation3 {
 
             fn alloc_input<F>(&mut self, value: F) -> Result<Variable, SynthesisError>
             where
-                F: FnOnce() -> Result<E::Fr, SynthesisError>
+                F: FnOnce() -> Result<E::Fr, SynthesisError>,
             {
                 let input_var = self.alloc(value)?;
 
@@ -337,8 +358,7 @@ impl SynthesisDriver for Permutation3 {
                 Ok(input_var)
             }
 
-            fn enforce_zero(&mut self, lc: LinearCombination<E>)
-            {
+            fn enforce_zero(&mut self, lc: LinearCombination<E>) {
                 // We just redirect things into the (recursing) enforce_equals method which
                 // does the actual work. Annoyingly, we need to use dynamic dispatch on the
                 // underlying iterator because once you've taken a Peekable<I> you can't get
@@ -346,15 +366,18 @@ impl SynthesisDriver for Permutation3 {
                 // at each depth of recursion we'd end up with a new type, which is
                 // impossible for the compiler to reason about.
                 let lc = lc.as_ref();
-                let lc: &mut dyn Iterator<Item=&(Variable, Coeff<E>)> = &mut lc.into_iter();
+                let lc: &mut dyn Iterator<Item = &(Variable, Coeff<E>)> = &mut lc.into_iter();
                 let lc = lc.peekable();
 
                 self.enforce_equals(lc, None);
             }
 
-            fn multiply<F>(&mut self, values: F) -> Result<(Variable, Variable, Variable), SynthesisError>
+            fn multiply<F>(
+                &mut self,
+                values: F,
+            ) -> Result<(Variable, Variable, Variable), SynthesisError>
             where
-                F: FnOnce() -> Result<(E::Fr, E::Fr, E::Fr), SynthesisError>
+                F: FnOnce() -> Result<(E::Fr, E::Fr, E::Fr), SynthesisError>,
             {
                 self.n += 1;
                 let index = self.n;
@@ -381,13 +404,11 @@ impl SynthesisDriver for Permutation3 {
                     Ok(a)
                 })?;
 
-                self.backend.set_var(b, || {
-                    b_val.ok_or(SynthesisError::AssignmentMissing)
-                })?;
+                self.backend
+                    .set_var(b, || b_val.ok_or(SynthesisError::AssignmentMissing))?;
 
-                self.backend.set_var(c, || {
-                    c_val.ok_or(SynthesisError::AssignmentMissing)
-                })?;
+                self.backend
+                    .set_var(c, || c_val.ok_or(SynthesisError::AssignmentMissing))?;
 
                 Ok((a, b, c))
             }
@@ -404,10 +425,9 @@ impl SynthesisDriver for Permutation3 {
             // is interpreted to be zero.
             fn enforce_equals<'a>(
                 &mut self,
-                mut lhs: Peekable<&mut dyn Iterator<Item=&'a (Variable, Coeff<E>)>>,
-                rhs: Option<Variable>
-            ) -> Option<E::Fr>
-            {
+                mut lhs: Peekable<&mut dyn Iterator<Item = &'a (Variable, Coeff<E>)>>,
+                rhs: Option<Variable>,
+            ) -> Option<E::Fr> {
                 // First, let's create a new linear constraint. We'll save its y value
                 // for the backend and q as well.
                 self.q += 1;
@@ -418,7 +438,11 @@ impl SynthesisDriver for Permutation3 {
 
                 // If the caller is enforce_equals we need to return the value of the lhs
                 // so that rhs can be assigned properly, so we keep track of it here.
-                let mut current_value = if rhs.is_some() { Some(E::Fr::zero()) } else { None };
+                let mut current_value = if rhs.is_some() {
+                    Some(E::Fr::zero())
+                } else {
+                    None
+                };
 
                 // If rhs is Some, then we _need_ to involve it in this
                 // linear constraint, so let's just handle it right away. (This also
@@ -438,7 +462,9 @@ impl SynthesisDriver for Permutation3 {
                             // combination; instead, create an ephemeral variable to hold
                             // the value of the remaining terms and use that. Temporarily,
                             // give the variable "zero" value.
-                            let ephemeral = self.alloc(|| Ok(E::Fr::zero())).expect("assignment is provided so this should not fail");
+                            let ephemeral = self
+                                .alloc(|| Ok(E::Fr::zero()))
+                                .expect("assignment is provided so this should not fail");
 
                             // One of the annoying "tricks" we have to embrace is that the ephemeral
                             // variable has all of its slots available, and so because it's the rhs
@@ -447,26 +473,34 @@ impl SynthesisDriver for Permutation3 {
                             // duplicated; otherwise, the duplicate variable will have a value of zero
                             // and we'd have to somehow track all of the duplicates when we later assign.
                             let mut iter = Some(term).into_iter().chain(lhs);
-                            let iter: &mut dyn Iterator<Item=&(Variable, Coeff<E>)> = &mut iter;
+                            let iter: &mut dyn Iterator<Item = &(Variable, Coeff<E>)> = &mut iter;
                             let value = self.enforce_equals(iter.peekable(), Some(ephemeral));
 
                             // Set the correct ephemeral value right away
-                            self.backend.set_var(ephemeral, || {
-                                value.ok_or(SynthesisError::AssignmentMissing)
-                            }).expect("assignment is provided so this should not fail");
+                            self.backend
+                                .set_var(ephemeral, || {
+                                    value.ok_or(SynthesisError::AssignmentMissing)
+                                })
+                                .expect("assignment is provided so this should not fail");
 
                             // Fix the underlying assignment -- the c-wire value will change if the ephemeral
                             // value was a b-wire.
                             self.fix_variable_assignment(ephemeral);
 
                             // Now we emplace the variable into the linear combination.
-                            self.emplace_variable(&mut slots_available, &y, ephemeral, Coeff::One, q);
+                            self.emplace_variable(
+                                &mut slots_available,
+                                &y,
+                                ephemeral,
+                                Coeff::One,
+                                q,
+                            );
                             num_slots_available -= 1;
 
                             match (&mut current_value, &value) {
                                 (Some(ref mut current_value), Some(ref value)) => {
                                     current_value.add_assign(&value);
-                                },
+                                }
                                 _ => {
                                     current_value = None;
                                 }
@@ -484,7 +518,7 @@ impl SynthesisDriver for Permutation3 {
                                 (Some(ref mut current_value), Some(mut value)) => {
                                     term.1.multiply(&mut value);
                                     current_value.add_assign(&value);
-                                },
+                                }
                                 _ => {
                                     current_value = None;
                                 }
@@ -500,8 +534,14 @@ impl SynthesisDriver for Permutation3 {
             // This takes a variable and coefficient and places it into a linear combination,
             // given a set of slots that are available, and updates the slot availability to
             // reflect which slot was chosen.
-            fn emplace_variable(&mut self, slots_available: &mut [bool; M], y: &B::LinearConstraintIndex, var: Variable, coeff: Coeff<E>, q: usize)
-            {
+            fn emplace_variable(
+                &mut self,
+                slots_available: &mut [bool; M],
+                y: &B::LinearConstraintIndex,
+                var: Variable,
+                coeff: Coeff<E>,
+                q: usize,
+            ) {
                 // Get the slots for this wire.
                 let wire_slots = self.get_wire_slots(var);
 
@@ -526,9 +566,9 @@ impl SynthesisDriver for Permutation3 {
                 // combination; clearly, it is not available for the wire. In order
                 // to rectify this, we will create a new wire with the same value.
                 let ephemeral_value = self.backend.get_var(var);
-                let ephemeral = self.alloc(|| {
-                    ephemeral_value.ok_or(SynthesisError::AssignmentMissing)
-                }).expect("assignment is provided so this should not fail");
+                let ephemeral = self
+                    .alloc(|| ephemeral_value.ok_or(SynthesisError::AssignmentMissing))
+                    .expect("assignment is provided so this should not fail");
 
                 // Now, we'll emplace the slot for _this_ variable.
                 self.emplace_slot(ephemeral, available_i, coeff, y, q);
@@ -548,7 +588,7 @@ impl SynthesisDriver for Permutation3 {
                 // original.
                 let iter = [(var, Coeff::One), (ephemeral, Coeff::NegativeOne)];
                 let mut iter = iter.iter();
-                let iter: &mut dyn Iterator<Item=&(Variable, Coeff<E>)> = &mut iter;
+                let iter: &mut dyn Iterator<Item = &(Variable, Coeff<E>)> = &mut iter;
                 self.enforce_equals(iter.peekable(), None);
             }
 
@@ -576,7 +616,7 @@ impl SynthesisDriver for Permutation3 {
                 let y = self.backend.get_for_q(slot_val.1);
 
                 self.backend.insert_coefficient(from, -slot_val.0, &y); // Negate coefficient to undo
-                
+
                 {
                     let to_vals = match to {
                         Variable::A(index) => &mut self.a[index - 1],
@@ -590,8 +630,14 @@ impl SynthesisDriver for Permutation3 {
             }
 
             // Place a coefficient in a slot
-            fn emplace_slot(&mut self, var: Variable, slot_index: usize, coeff: Coeff<E>, y: &B::LinearConstraintIndex, q: usize)
-            {
+            fn emplace_slot(
+                &mut self,
+                var: Variable,
+                slot_index: usize,
+                coeff: Coeff<E>,
+                y: &B::LinearConstraintIndex,
+                q: usize,
+            ) {
                 let vals = match var {
                     Variable::A(index) => &mut self.a[index - 1],
                     Variable::B(index) => &mut self.b[index - 1],
@@ -632,13 +678,15 @@ impl SynthesisDriver for Permutation3 {
                     (Some(mut a), Some(b)) => {
                         a.mul_assign(&b);
                         Some(a)
-                    },
-                    _ => { None }
+                    }
+                    _ => None,
                 };
 
-                self.backend.set_var(Variable::C(index), || {
-                    c_value.ok_or(SynthesisError::AssignmentMissing)
-                }).expect("assignment exists if the closure is called");
+                self.backend
+                    .set_var(Variable::C(index), || {
+                        c_value.ok_or(SynthesisError::AssignmentMissing)
+                    })
+                    .expect("assignment exists if the closure is called");
             }
         }
 
@@ -648,17 +696,19 @@ impl SynthesisDriver for Permutation3 {
             _marker: PhantomData,
             q: 0,
             n: 0,
-            
+
             a: vec![],
             b: vec![],
             c: vec![],
         };
 
-        let one = tmp.alloc_input(|| Ok(E::Fr::one())).expect("should have no issues");
+        let one = tmp
+            .alloc_input(|| Ok(E::Fr::one()))
+            .expect("should have no issues");
 
         match (one, <Synthesizer<E, B> as ConstraintSystem<E>>::ONE) {
-            (Variable::A(1), Variable::A(1)) => {},
-            _ => panic!("one variable is incorrect")
+            (Variable::A(1), Variable::A(1)) => {}
+            _ => panic!("one variable is incorrect"),
         }
 
         circuit.synthesize(&mut tmp)?;

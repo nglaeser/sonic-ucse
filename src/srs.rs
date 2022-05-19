@@ -1,9 +1,9 @@
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, Wnaf};
 // use rand::rngs::OsRng;
 // use ed25519_dalek::{Keypair,PublicKey};
-use elgamal::{ElGamalKeyPair,ElGamalPublicKey,ElGamalPP};
+use crate::usig::{SecretKey, Sig, Starsig};
+use elgamal::{ElGamalKeyPair, ElGamalPP, ElGamalPublicKey};
 use starsig::VerificationKey;
-use crate::usig::{Starsig,SecretKey,Sig};
 
 pub struct SRS<E: Engine> {
     pub d: usize,
@@ -37,8 +37,7 @@ pub struct SRS<E: Engine> {
 }
 
 impl<E: Engine> SRS<E> {
-    pub fn dummy(d: usize, _: E::Fr, _: E::Fr) 
-    -> Self {
+    pub fn dummy(d: usize, _: E::Fr, _: E::Fr) -> Self {
         // generate srs signature keys
         let usig = Starsig;
         let (_sk_sig, pk_sig): (SecretKey, VerificationKey) = usig.kgen();
@@ -69,8 +68,7 @@ impl<E: Engine> SRS<E> {
         }
     }
 
-    pub fn new(d: usize, x: E::Fr, alpha: E::Fr) 
-    -> Self {
+    pub fn new(d: usize, x: E::Fr, alpha: E::Fr) -> Self {
         let mut g1 = Wnaf::new();
         let mut g1 = g1.base(E::G1::one(), d * 4);
         let mut g2 = Wnaf::new();

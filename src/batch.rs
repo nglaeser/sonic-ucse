@@ -8,12 +8,12 @@
 //! This submodule contains the `Batch` abstraction for creating a
 //! context for batch verification.
 
-use pairing::{Engine, Field, CurveAffine, CurveProjective};
+use crate::protocol::SonicProof;
 use crate::srs::SRS;
 use crate::util::multiexp;
 use crate::Statement;
-use crate::protocol::SonicProof;
-use ed25519_dalek::{PublicKey,Signature,Verifier};
+use ed25519_dalek::{PublicKey, Signature, Verifier};
+use pairing::{CurveAffine, CurveProjective, Engine, Field};
 
 // One of the primary functions of the `Batch` abstraction is handling
 // Kate commitment openings:
@@ -82,7 +82,7 @@ impl<E: Engine> Batch<E> {
                 tmp.prepare()
             },
 
-            value: E::Fr::zero(), // 0
+            value: E::Fr::zero(),   // 0
             g: srs.g_positive_x[0], // g^x^0 = g
 
             c: vec![],
@@ -145,32 +145,34 @@ impl<E: Engine> Batch<E> {
         {
             use crate::util::to_bytes;
 
-            for ((pk, pk_ot), sigma) in self.pk_l
+            for ((pk, pk_ot), sigma) in self
+                .pk_l
                 .iter()
                 .zip(self.pk_ot.iter())
-                .zip(self.sigma.iter()) {
+                .zip(self.sigma.iter())
+            {
                 let message: &[u8] = &pk_ot.to_bytes();
-                if !pk.verify(message, sigma).is_ok() { return false }
+                if !pk.verify(message, sigma).is_ok() {
+                    return false;
+                }
             }
-            for (((((pk, underlying_proof), c), pk_l), sigma), sigma_ot) in self.pk_ot
+            for (((((pk, underlying_proof), c), pk_l), sigma), sigma_ot) in self
+                .pk_ot
                 .iter()
                 .zip(self.underlying_proof.iter())
                 .zip(self.c.iter())
                 .zip(self.pk_l.iter())
                 .zip(self.sigma.iter())
-                .zip(self.sigma_ot.iter()) {
-                let message: &[u8] = &to_bytes(
-                    underlying_proof,
-                    x,
-                    c,
-                    pk_l,
-                    *sigma
-                );
+                .zip(self.sigma_ot.iter())
+            {
+                let message: &[u8] = &to_bytes(underlying_proof, x, c, pk_l, *sigma);
                 let sigma_ot_valid = match &sigma_ot {
-                    Ok(sig) => pk.verify_signature(sig,&message[..]),
-                    Err(_) => false
+                    Ok(sig) => pk.verify_signature(sig, &message[..]),
+                    Err(_) => false,
                 };
-                if !sigma_ot_valid { return false }
+                if !sigma_ot_valid {
+                    return false;
+                }
             }
         }
 
@@ -179,33 +181,43 @@ impl<E: Engine> Batch<E> {
         self.alpha.push((self.g, self.value));
         // alpha = [(g, 0)]
 
-        // 
+        //
         let alpha_x = multiexp(
             self.alpha_x.iter().map(|x| &x.0),
             self.alpha_x.iter().map(|x| &x.1),
-        ).into_affine().prepare();
+        )
+        .into_affine()
+        .prepare();
 
         let alpha = multiexp(
             self.alpha.iter().map(|x| &x.0),
             self.alpha.iter().map(|x| &x.1),
-        ).into_affine().prepare();
+        )
+        .into_affine()
+        .prepare();
 
         let neg_h = multiexp(
             self.neg_h.iter().map(|x| &x.0),
             self.neg_h.iter().map(|x| &x.1),
-        ).into_affine().prepare();
+        )
+        .into_affine()
+        .prepare();
 
         // -x^{max-d}, aka -x^{-d+max}
         let neg_x_n_minus_d = multiexp(
             self.neg_x_n_minus_d.iter().map(|x| &x.0),
             self.neg_x_n_minus_d.iter().map(|x| &x.1),
-        ).into_affine().prepare();
+        )
+        .into_affine()
+        .prepare();
 
         E::final_exponentiation(&E::miller_loop(&[
             (&alpha_x, &self.alpha_x_precomp),
             (&alpha, &self.alpha_precomp),
             (&neg_h, &self.neg_h_precomp),
             (&neg_x_n_minus_d, &self.neg_x_n_minus_d_precomp),
-        ])).unwrap() == E::Fqk::one()
+        ]))
+        .unwrap()
+            == E::Fqk::one()
     }
 }

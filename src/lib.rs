@@ -1,13 +1,13 @@
 use pairing::{Engine, Field};
 use std::ops::{Add, Neg, Sub};
 
-pub mod srs;
-pub mod util;
 pub mod batch;
-pub mod synthesis;
-pub mod protocol;
 pub mod kupke;
+pub mod protocol;
+pub mod srs;
+pub mod synthesis;
 pub mod usig;
+pub mod util;
 
 #[derive(Copy, Clone, Debug)]
 pub enum SynthesisError {
@@ -79,11 +79,11 @@ impl<E: Engine> Coeff<E> {
         match self {
             Coeff::Zero => {
                 *with = E::Fr::zero();
-            },
-            Coeff::One => {},
+            }
+            Coeff::One => {}
             Coeff::NegativeOne => {
                 with.negate();
-            },
+            }
             Coeff::Full(val) => {
                 with.mul_assign(val);
             }

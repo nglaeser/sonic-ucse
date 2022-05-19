@@ -3,17 +3,16 @@ mod tests {
     // to test correctness of new primitives implemented for UC-SE
     extern crate sonic_ucse;
 
-    use sonic_ucse::protocol::*;
-    use sonic_ucse::usig::*;
     use lamport_sigs;
     use pairing::bls12_381::Fr;
-    use pairing::bls12_381::{G1Affine};
-    use starsig::{Signature,VerificationKey};
-
+    use pairing::bls12_381::G1Affine;
+    use sonic_ucse::protocol::*;
+    use sonic_ucse::usig::*;
+    use starsig::{Signature, VerificationKey};
 
     use curv::BigInt;
     use elgamal::{
-        ElGamal, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,ElGamalCiphertext,ElGamalError
+        ElGamal, ElGamalCiphertext, ElGamalError, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,
     };
     #[test]
     fn test_kupke() {
@@ -33,7 +32,7 @@ mod tests {
         assert_eq!(message, ptext.unwrap());
     }
 
-    use sonic_ucse::kupke::{KeyUpdate,SKeyUpdate};
+    use sonic_ucse::kupke::{KeyUpdate, SKeyUpdate};
     #[test]
     fn test_kupke_update() {
         let lambda: usize = 128;
@@ -102,8 +101,8 @@ mod tests {
 
         // verify
         let sigma_ot_valid = match sigma_ot {
-            Ok(sig) => pk_ot.verify_signature(&sig,proof_bytes),
-            Err(_) => false
+            Ok(sig) => pk_ot.verify_signature(&sig, proof_bytes),
+            Err(_) => false,
         };
         assert!(sigma_ot_valid);
     }

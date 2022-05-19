@@ -1,16 +1,19 @@
 extern crate bellman;
+extern crate ed25519_dalek;
 extern crate pairing;
 extern crate rand;
 extern crate sapling_crypto;
 extern crate sonic_ucse;
-extern crate ed25519_dalek;
 
 use pairing::{Engine, Field, PrimeField};
 use sonic_ucse::protocol::*;
 use sonic_ucse::srs::SRS;
-use sonic_ucse::{Circuit, ConstraintSystem, LinearCombination, SynthesisError, Variable, Coeff, BigIntable, Statement};
 use sonic_ucse::synthesis::*;
 use sonic_ucse::util::bool_vec_to_big_int;
+use sonic_ucse::{
+    BigIntable, Circuit, Coeff, ConstraintSystem, LinearCombination, Statement, SynthesisError,
+    Variable,
+};
 use std::marker::PhantomData;
 
 struct Adaptor<'a, E: Engine, CS: ConstraintSystem<E> + 'a> {
@@ -36,9 +39,10 @@ impl<'a, E: Engine, CS: ConstraintSystem<E> + 'a> bellman::ConstraintSystem<E>
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        let var = self.cs.alloc(|| {
-            f().map_err(|_| SynthesisError::AssignmentMissing)
-        }).map_err(|_| bellman::SynthesisError::AssignmentMissing)?;
+        let var = self
+            .cs
+            .alloc(|| f().map_err(|_| SynthesisError::AssignmentMissing))
+            .map_err(|_| bellman::SynthesisError::AssignmentMissing)?;
 
         Ok(match var {
             Variable::A(index) => bellman::Variable::new_unchecked(bellman::Index::Input(index)),
@@ -57,9 +61,10 @@ impl<'a, E: Engine, CS: ConstraintSystem<E> + 'a> bellman::ConstraintSystem<E>
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        let var = self.cs.alloc_input(|| {
-            f().map_err(|_| SynthesisError::AssignmentMissing)
-        }).map_err(|_| bellman::SynthesisError::AssignmentMissing)?;
+        let var = self
+            .cs
+            .alloc_input(|| f().map_err(|_| SynthesisError::AssignmentMissing))
+            .map_err(|_| bellman::SynthesisError::AssignmentMissing)?;
 
         Ok(match var {
             Variable::A(index) => bellman::Variable::new_unchecked(bellman::Index::Input(index)),
@@ -174,41 +179,48 @@ impl<C: Statement> Statement for AdaptorCircuit<C> {
 
 fn main() {
     use pairing::bls12_381::{Bls12, Fr};
-    use std::time::{Instant};
+    use std::time::Instant;
 
     // 'a is a named lifetime (borrowed pointers are required to have lifetimes in impls)
     struct PedersenHashPreimageCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> {
         preimage: Vec<Option<bool>>,
         params: &'a E::Params,
     }
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Statement for PedersenHashPreimageCircuit<'a, E> {
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Statement
+        for PedersenHashPreimageCircuit<'a, E>
+    {
         fn get_statement(&self) -> &[u8] {
             b"fake statement instead of hash digest"
         }
     }
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> BigIntable for PedersenHashPreimageCircuit<'a, E> {
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> BigIntable
+        for PedersenHashPreimageCircuit<'a, E>
+    {
         fn to_big_int(&self) -> curv::BigInt {
             bool_vec_to_big_int(&self.preimage)
         }
     }
     // trait Clone for PedersenHashPreimageCircuit
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Clone for PedersenHashPreimageCircuit<'a, E> {
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Clone
+        for PedersenHashPreimageCircuit<'a, E>
+    {
         fn clone(&self) -> Self {
             PedersenHashPreimageCircuit {
                 preimage: self.preimage.clone(),
-                params: self.params
+                params: self.params,
             }
         }
     }
     // trait bellman::Circuit<Scalar: PrimeField> for PedersenHashPreimageCircuit
     // https://docs.rs/bellman/0.11.1/bellman/trait.Circuit.html
     // i.e. a circuit that can be syntehsized (with `synthesize` during CRSgen and P)
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine> bellman::Circuit<E> for PedersenHashPreimageCircuit<'a, E> {
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine> bellman::Circuit<E>
+        for PedersenHashPreimageCircuit<'a, E>
+    {
         fn synthesize<CS: bellman::ConstraintSystem<E>>(
             self,
-            cs: &mut CS
-        ) -> Result<(), bellman::SynthesisError>
-        {
+            cs: &mut CS,
+        ) -> Result<(), bellman::SynthesisError> {
             //use bellman::ConstraintSystem;
             use sapling_crypto::circuit::boolean::{AllocatedBit, Boolean};
             use sapling_crypto::circuit::pedersen_hash;
@@ -216,20 +228,26 @@ fn main() {
             let mut preimage = vec![];
 
             for &bit in self.preimage.iter() {
-                preimage.push(Boolean::from(AllocatedBit::alloc(&mut* cs, bit)?));
+                preimage.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
             }
 
             pedersen_hash::pedersen_hash(
-                &mut* cs, pedersen_hash::Personalization::NoteCommitment, &preimage, self.params)?;
+                &mut *cs,
+                pedersen_hash::Personalization::NoteCommitment,
+                &preimage,
+                self.params,
+            )?;
 
             Ok(())
         }
     }
 
     // Language for Pedersen preimage OR cpk shift
-    use sapling_crypto::circuit::{ecc::EdwardsPoint,num::AllocatedNum};
+    use sapling_crypto::circuit::{ecc::EdwardsPoint, num::AllocatedNum};
     use sapling_crypto::jubjub::edwards::Point;
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup> {
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
+        for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
+    {
         fn clone(&self) -> Self {
             PedersenHashPreimageORShiftCircuit {
                 preimage: self.preimage.clone(),
@@ -239,22 +257,30 @@ fn main() {
             }
         }
     }
-    struct PedersenHashPreimageORShiftCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> {
+    struct PedersenHashPreimageORShiftCircuit<
+        'a,
+        E: sapling_crypto::jubjub::JubjubEngine + 'a,
+        Subgroup,
+    > {
         preimage: Vec<Option<bool>>,
         params: &'a E::Params,
         shift: Vec<Option<bool>>, // shift is a scalar
         // TODO NG this is part of statement not witness
-        cpk_o: Point<E, Subgroup>, 
+        cpk_o: Point<E, Subgroup>,
         // cpk: Point<E, Subgroup>,
         // digest: Vec<Option<bool>>,
     }
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Statement for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup> {
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Statement
+        for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
+    {
         fn get_statement(&self) -> &[u8] {
             b"TODO NG fake statement instead of hash digest, cpk, cpk_o"
         }
     }
     use curv::arithmetic::BitManipulation;
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> BigIntable for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup> {
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> BigIntable
+        for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
+    {
         fn to_big_int(&self) -> curv::BigInt {
             // TODO NG the below breaks elgamal::ElGamal::encrypt(&circuit.to_big_int(), &srs.pk) (outputs Err)
             // let left = bool_vec_to_big_int(&self.preimage);
@@ -264,12 +290,13 @@ fn main() {
             bool_vec_to_big_int(&self.preimage)
         }
     }
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E> for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup> {
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
+        for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
+    {
         fn synthesize<CS: bellman::ConstraintSystem<E>>(
             self,
-            cs: &mut CS
-        ) -> Result<(), bellman::SynthesisError>
-        {
+            cs: &mut CS,
+        ) -> Result<(), bellman::SynthesisError> {
             //use bellman::ConstraintSystem;
             use sapling_crypto::circuit::boolean::{AllocatedBit, Boolean};
             use sapling_crypto::circuit::pedersen_hash;
@@ -278,40 +305,36 @@ fn main() {
             let mut shift = vec![];
 
             for &bit in self.preimage.iter() {
-                preimage.push(Boolean::from(AllocatedBit::alloc(&mut* cs, bit)?));
+                preimage.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
             }
             for &bit in self.shift.iter() {
-                shift.push(Boolean::from(AllocatedBit::alloc(&mut* cs, bit)?));
+                shift.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
             }
             let cpk_o_point_xy: (E::Fr, E::Fr) = self.cpk_o.into_xy();
             // create AllocatedNum and then convert back to Edwards point
-            let cpk_o_point_x = AllocatedNum::alloc(
-                cs.namespace(|| "cpk_o x"),
-                || {
-                    Ok(cpk_o_point_xy.0)
-                }
-            );
-            let cpk_o_point_y = AllocatedNum::alloc(
-                cs.namespace(|| "cpk_o y"),
-                || {
-                    Ok(cpk_o_point_xy.1)
-                }
-            );
+            let cpk_o_point_x =
+                AllocatedNum::alloc(cs.namespace(|| "cpk_o x"), || Ok(cpk_o_point_xy.0));
+            let cpk_o_point_y =
+                AllocatedNum::alloc(cs.namespace(|| "cpk_o y"), || Ok(cpk_o_point_xy.1));
             let cpk_o_point = EdwardsPoint::<E>::interpret(
-                &mut *cs, 
+                &mut *cs,
                 &cpk_o_point_x.unwrap(),
                 &cpk_o_point_y.unwrap(),
-                self.params
+                self.params,
             )?;
 
             // TODO NG add OR
             cpk_o_point.mul(
                 cs.namespace(|| format!("multiplication of shift to cpk_o")),
                 &shift,
-                self.params
+                self.params,
             )?;
             pedersen_hash::pedersen_hash(
-                &mut* cs, pedersen_hash::Personalization::NoteCommitment, &preimage, self.params)?;
+                &mut *cs,
+                pedersen_hash::Personalization::NoteCommitment,
+                &preimage,
+                self.params,
+            )?;
 
             Ok(())
         }
@@ -357,7 +380,7 @@ fn main() {
     }
 
     {
-        use sapling_crypto::jubjub::{PrimeOrder,Unknown};
+        use sapling_crypto::jubjub::{PrimeOrder, Unknown};
 
         // Fr = prime (scalar) field of the groups
         let srs_x = Fr::from_str("23923").unwrap();
@@ -366,8 +389,7 @@ fn main() {
         println!("making srs");
         let start = Instant::now();
         // TODO NG why create a dummy srs and not a real one?
-        let srs = SRS::<Bls12>::dummy(830564,
-            srs_x, srs_alpha);
+        let srs = SRS::<Bls12>::dummy(830564, srs_x, srs_alpha);
         // let srs = SRS::<Bls12>::new(830564,
         //     srs_x, srs_alpha);
         println!("done in {:?}", start.elapsed());
@@ -395,22 +417,37 @@ fn main() {
         // runs AdaptorCircuit::synthesize
         // which runs circuit.synthesize(adaptor: Adaptor)
         // Adaptor implements bellman::ConstraintSystem
-        let proof = create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs).unwrap();
+        let proof = create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
+            .unwrap();
         println!("done in {:?}", start.elapsed());
 
         println!("creating advice");
         let start = Instant::now();
-        let advice = create_advice::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &proof, &srs);
+        let advice = create_advice::<Bls12, _, ChosenBackend>(
+            &AdaptorCircuit(circuit.clone()),
+            &proof,
+            &srs,
+        );
         println!("done in {:?}", start.elapsed());
 
         println!("creating aggregate for {} proofs", samples);
         let start = Instant::now();
-        let proofs: Vec<_> = (0..samples).map(|_| (proof.clone(), advice.clone())).collect();
-        let aggregate = create_aggregate::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &proofs, &srs);
+        let proofs: Vec<_> = (0..samples)
+            .map(|_| (proof.clone(), advice.clone()))
+            .collect();
+        let aggregate = create_aggregate::<Bls12, _, ChosenBackend>(
+            &AdaptorCircuit(circuit.clone()),
+            &proofs,
+            &srs,
+        );
         println!("done in {:?}", start.elapsed());
 
         {
-            let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(AdaptorCircuit(circuit.clone()), &srs).unwrap();
+            let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
+                AdaptorCircuit(circuit.clone()),
+                &srs,
+            )
+            .unwrap();
             println!("verifying 1 proof without advice");
             let start = Instant::now();
             {
@@ -426,7 +463,11 @@ fn main() {
         }
 
         {
-            let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(AdaptorCircuit(circuit.clone()), &srs).unwrap();
+            let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
+                AdaptorCircuit(circuit.clone()),
+                &srs,
+            )
+            .unwrap();
             println!("verifying {} proofs without advice", samples);
             let start = Instant::now();
             {
@@ -437,9 +478,13 @@ fn main() {
             }
             println!("done in {:?}", start.elapsed());
         }
-        
+
         {
-            let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(AdaptorCircuit(circuit.clone()), &srs).unwrap();
+            let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
+                AdaptorCircuit(circuit.clone()),
+                &srs,
+            )
+            .unwrap();
             println!("verifying 100 proofs with advice");
             let start = Instant::now();
             {

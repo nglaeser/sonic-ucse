@@ -1,13 +1,13 @@
-use rand::rngs::OsRng;
-use rand::{RngCore, CryptoRng};
-use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-use curve25519_dalek::scalar::Scalar;
-use starsig::TranscriptProtocol;
-use merlin::Transcript;
-use std::ops::{Mul,Add};
 use crate::BigIntable;
-use curv::elliptic::{curves,curves::ECScalar,curves::Ristretto};
+use curv::elliptic::{curves, curves::ECScalar, curves::Ristretto};
+use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+use curve25519_dalek::scalar::Scalar;
+use merlin::Transcript;
+use rand::rngs::OsRng;
+use rand::{CryptoRng, RngCore};
+use starsig::TranscriptProtocol;
+use std::ops::{Add, Mul};
 
 // collection of algorithms that make up a digital signature
 pub struct Starsig;
@@ -16,10 +16,10 @@ pub trait Sig<SK, VK, S, E> {
     fn sign(&self, _: SK, _: &'static [u8]) -> S;
     fn verify(&self, _: VK, _: &'static [u8], _: S) -> Result<(), E>;
 }
-use starsig::{Signature,VerificationKey,StarsigError};
+use starsig::{Signature, StarsigError, VerificationKey};
 
 // starsig secret key
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 pub struct SecretKey {
     // from group of prime order l = 2^252 + 27742317777372353535851937790883648493
     // (ristretto 255)
@@ -28,18 +28,23 @@ pub struct SecretKey {
 impl SecretKey {
     pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
         let scalar = Scalar::random(rng);
-        SecretKey{ scalar }
+        SecretKey { scalar }
     }
 }
 impl Add<Update<Scalar>> for SecretKey {
     type Output = SecretKey;
     fn add(self, up: Update<Scalar>) -> SecretKey {
-        SecretKey { scalar: self.scalar + up.scalar }
+        SecretKey {
+            scalar: self.scalar + up.scalar,
+        }
     }
 }
 
 // updatability of keys
-pub trait Updatable<T> where T: Clone + Copy {
+pub trait Updatable<T>
+where
+    T: Clone + Copy,
+{
     fn update(self, _: Update<T>) -> Self;
 }
 // how to update starsig secret and public keys
@@ -59,14 +64,14 @@ impl Updatable<Scalar> for VerificationKey {
         //        = sk_up * RISTRETTO_BASEPOINT_POINT
         let pk_compressed: CompressedRistretto = self.into();
         let pk_point: RistrettoPoint = pk_compressed.decompress().unwrap();
-        VerificationKey::from(pk_point + (up*RISTRETTO_BASEPOINT_POINT))
+        VerificationKey::from(pk_point + (up * RISTRETTO_BASEPOINT_POINT))
     }
 }
 
 // starsig digital signature algorithms
 impl Sig<SecretKey, VerificationKey, Signature, StarsigError> for Starsig {
     fn kgen(&self) -> (SecretKey, VerificationKey) {
-        let mut csprng = OsRng{};
+        let mut csprng = OsRng {};
         let sk = SecretKey::random(&mut csprng);
         let pk = VerificationKey::from_secret(&sk.scalar);
         (sk, pk)
@@ -74,14 +79,22 @@ impl Sig<SecretKey, VerificationKey, Signature, StarsigError> for Starsig {
     fn sign(&self, sk: SecretKey, m: &'static [u8]) -> Signature {
         Signature::sign(&mut Transcript::new(m), sk.scalar)
     }
-    fn verify(&self, vk: VerificationKey, m: &'static [u8], sigma: Signature) -> Result<(), StarsigError> {
+    fn verify(
+        &self,
+        vk: VerificationKey,
+        m: &'static [u8],
+        sigma: Signature,
+    ) -> Result<(), StarsigError> {
         sigma.verify(&mut Transcript::new(m), vk)
     }
 }
 
 // updating information
-#[derive(Copy,Clone)]
-pub struct Update<T> where T: Copy + Clone {
+#[derive(Copy, Clone)]
+pub struct Update<T>
+where
+    T: Copy + Clone,
+{
     pub scalar: T,
 }
 impl Mul<RistrettoPoint> for Update<Scalar> {
@@ -98,7 +111,7 @@ impl Mul<Update<Scalar>> for Scalar {
 }
 impl BigIntable for Update<Scalar> {
     fn to_big_int(&self) -> curv::BigInt {
-        let rs: curves::Scalar<Ristretto> = 
+        let rs: curves::Scalar<Ristretto> =
             curves::Scalar::from_raw(ECScalar::from_underlying(self.scalar));
         rs.to_bigint()
     }
@@ -114,9 +127,9 @@ pub trait UpdatableSig<SK, VK, S, T: Copy + Clone> {
 }
 impl UpdatableSig<SecretKey, VerificationKey, Signature, Scalar> for Starsig {
     fn upk(&self, pk: VerificationKey) -> (VerificationKey, Update<Scalar>) {
-        let mut csprng = OsRng{};
+        let mut csprng = OsRng {};
         let r = Scalar::random(&mut csprng);
-        let up = Update{ scalar: r };
+        let up = Update { scalar: r };
 
         let pk_up: VerificationKey = pk.update(up);
 
@@ -126,7 +139,7 @@ impl UpdatableSig<SecretKey, VerificationKey, Signature, Scalar> for Starsig {
         sk.update(up)
     }
     fn usig(&self, m: &'static [u8], sigma: Signature, up: Update<Scalar>) -> Signature {
-        // sigma_up := sigma + c * up_sk 
+        // sigma_up := sigma + c * up_sk
         //           = (r + c * sk) + c * up_sk = r + c * sk_up
         let mut transcript = Transcript::new(m);
         let c = {

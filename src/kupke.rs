@@ -1,7 +1,7 @@
-use curv::BigInt;
-use curv::arithmetic::traits::{Modulo,Samplable};
+use curv::arithmetic::traits::{Modulo, Samplable};
 use curv::arithmetic::Converter;
-use elgamal::{ElGamalPP,ElGamalPrivateKey,ElGamalPublicKey,ElGamalCiphertext};
+use curv::BigInt;
+use elgamal::{ElGamalCiphertext, ElGamalPP, ElGamalPrivateKey, ElGamalPublicKey};
 // use elgamal::{ElGamal,ElGamalKeyPair};
 
 pub trait KeyUpdate {
@@ -29,7 +29,7 @@ pub trait SKeyUpdate {
 }
 impl SKeyUpdate for ElGamalPrivateKey {
     fn usk(&self, up_sk: &SKUpdate) -> Self {
-        ElGamalPrivateKey { 
+        ElGamalPrivateKey {
             pp: self.pp.clone(),
             x: BigInt::mod_mul(&self.x, &up_sk.up, &self.pp.q),
         }
