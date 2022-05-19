@@ -143,7 +143,7 @@ impl<E: Engine> Batch<E> {
         //// check sigma and sigma_ot first, before the sonic proof
         // verify all the sigmas
         {
-            use crate::util::to_bytes;
+            use crate::util::to_be_bytes;
 
             for ((pk, pk_ot), sigma) in self
                 .pk_l
@@ -165,7 +165,7 @@ impl<E: Engine> Batch<E> {
                 .zip(self.sigma.iter())
                 .zip(self.sigma_ot.iter())
             {
-                let message: &[u8] = &to_bytes(underlying_proof, x, c, pk_l, *sigma);
+                let message: &[u8] = &to_be_bytes(underlying_proof, x, c, pk_l, *sigma);
                 let sigma_ot_valid = match &sigma_ot {
                     Ok(sig) => pk.verify_signature(sig, &message[..]),
                     Err(_) => false,

@@ -48,14 +48,14 @@ impl<A: CurveAffine, F: pairing::PrimeField> SonicProof<A, F> {
         let rz_bytes: Vec<u8> = rz_repr
             .as_ref()
             .into_iter()
-            .flat_map(u64_to_u8_vec)
+            .flat_map(|x| [(*x).to_be_bytes()].concat())
             .collect();
 
         let rzy_repr = &self.rzy.into_repr();
         let rzy_bytes: Vec<u8> = rzy_repr
             .as_ref()
             .into_iter()
-            .flat_map(u64_to_u8_vec)
+            .flat_map(|x| [(*x).to_be_bytes()].concat())
             .collect();
 
         let z_opening_bytes = &self.z_opening.into_uncompressed();
@@ -994,7 +994,7 @@ pub fn create_proof<E: Engine, C: Statement + BigIntable + Circuit<E>, S: Synthe
         z_opening,
         zy_opening,
     };
-    let message2: Vec<u8> = to_bytes(&sonic_proof, circuit, &c, &pk_l, sigma);
+    let message2: Vec<u8> = to_be_bytes(&sonic_proof, circuit, &c, &pk_l, sigma);
     let sigma_ot = sk_ot.sign(&message2[..]);
 
     Ok(Proof {

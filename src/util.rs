@@ -7,27 +7,21 @@ use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, PrimeFieldRepr};
 use std::io;
 
-pub fn to_bytes<A: CurveAffine, F: pairing::PrimeField>(
+pub fn to_be_bytes<A: CurveAffine, F: pairing::PrimeField>(
     pi: &SonicProof<A, F>,
     x: &dyn Statement,
     c: &elgamal::ElGamalCiphertext,
     pk_l: &PublicKey,
     sigma: Signature,
 ) -> Vec<u8> {
-    let sonic_bytes: &[u8] = &pi.to_bytes();
-    let x_bytes: &[u8] = x.get_statement();
-    let c_bytes: Vec<u8> = c.to_bytes();
-    let pk_l_bytes: [u8; 32] = pk_l.to_bytes();
-    let sigma_bytes: [u8; 64] = sigma.to_bytes();
-
-    [sonic_bytes, x_bytes, &c_bytes, &pk_l_bytes, &sigma_bytes].concat()
-}
-pub fn u64_to_u8_vec(x: &u64) -> Vec<u8> {
-    use byteorder::{BigEndian, ByteOrder};
-
-    let mut buf = [0; 8];
-    BigEndian::write_u64(&mut buf, *x);
-    [buf].concat()
+    [
+        &pi.to_bytes(),    // sonic_bytes,
+        x.get_statement(), // x_bytes,
+        &c.to_bytes(),     // &c_bytes,
+        &pk_l.to_bytes(),  // &pk_l_bytes,
+        &sigma.to_bytes(), // &sigma_bytes
+    ]
+    .concat()
 }
 
 pub trait TranscriptProtocol {

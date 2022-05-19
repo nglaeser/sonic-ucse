@@ -310,18 +310,8 @@ fn main() {
             for &bit in self.shift.iter() {
                 shift.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
             }
-            let cpk_o_point_xy: (E::Fr, E::Fr) = self.cpk_o.into_xy();
-            // create AllocatedNum and then convert back to Edwards point
-            let cpk_o_point_x =
-                AllocatedNum::alloc(cs.namespace(|| "cpk_o x"), || Ok(cpk_o_point_xy.0));
-            let cpk_o_point_y =
-                AllocatedNum::alloc(cs.namespace(|| "cpk_o y"), || Ok(cpk_o_point_xy.1));
-            let cpk_o_point = EdwardsPoint::<E>::interpret(
-                &mut *cs,
-                &cpk_o_point_x.unwrap(),
-                &cpk_o_point_y.unwrap(),
-                self.params,
-            )?;
+            let cpk_o_point = EdwardsPoint::witness(&mut *cs, Some(self.cpk_o), self.params)?;
+            cpk_o_point.inputize(&mut *cs)?;
 
             // TODO NG add OR
             cpk_o_point.mul(
