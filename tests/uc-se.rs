@@ -10,32 +10,10 @@ mod tests {
     use sonic_ucse::usig::*;
     use starsig::{Signature, VerificationKey};
 
-    use curv::BigInt;
-    use elgamal::{
-        ElGamal, ElGamalCiphertext, ElGamalError, ElGamalKeyPair, ElGamalPP, ElGamalPrivateKey,
-    };
-    #[test]
-    fn test_kupke() {
-        // setup
-        let lambda: usize = 128;
-        let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
-
-        // keygen
-        let keypair: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
-
-        // enc
-        let message = BigInt::from(42);
-        let ctext: ElGamalCiphertext = ElGamal::encrypt(&message, &keypair.pk).unwrap();
-
-        // dec
-        let ptext: Result<BigInt, ElGamalError> = ElGamal::decrypt(&ctext, &keypair.sk);
-        assert_eq!(message, ptext.unwrap());
-    }
-
     use dusk_plonk::jubjub::{JubJubExtended, JubJubScalar, GENERATOR_EXTENDED};
     use jubjub_elgamal::{Cypher, PrivateKey, PublicKey};
     #[test]
-    fn test_jubjub_kupke() {
+    fn test_kupke() {
         // keygen
         let sk = PrivateKey::new(&mut rand::thread_rng());
         let pk = PublicKey::from(sk);
@@ -55,22 +33,6 @@ mod tests {
     use sonic_ucse::kupke::{KeyUpdate, SKeyUpdate};
     #[test]
     fn test_kupke_update() {
-        let lambda: usize = 128;
-        let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
-        let mut keypair: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
-        let message = BigInt::from(42 as u64);
-
-        let mut csprng = rand::rngs::OsRng {};
-        let up_sk = keypair.pk.upk(&mut csprng);
-        let sk_up: ElGamalPrivateKey = keypair.sk.usk(&up_sk);
-        let ctext_up: ElGamalCiphertext = ElGamal::encrypt(&message, &keypair.pk).unwrap();
-        // TODO NG probably make upk just directly update the keypair
-        let ptext_up: Result<BigInt, ElGamalError> = ElGamal::decrypt(&ctext_up, &sk_up);
-
-        assert_eq!(message, ptext_up.unwrap());
-    }
-    #[test]
-    fn test_jubjub_kupke_update() {
         // check that keys are still a valid keypair after update
         // i.e., Dec(sk_up, Enc(pk_up, m)) == m
         let sk = PrivateKey::new(&mut rand::thread_rng());

@@ -2,7 +2,6 @@ use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, Wnaf};
 // use rand::rngs::OsRng;
 // use ed25519_dalek::{Keypair,PublicKey};
 use crate::usig::{SecretKey, Sig, Starsig};
-use elgamal::{ElGamalKeyPair, ElGamalPP, ElGamalPublicKey};
 use starsig::VerificationKey;
 
 pub struct SRS<E: Engine> {
@@ -33,7 +32,7 @@ pub struct SRS<E: Engine> {
     pub h_positive_x_alpha: Vec<E::G2Affine>,
 
     pub cpk: VerificationKey,
-    pub pk: ElGamalPublicKey,
+    pub pk: jubjub_elgamal::PublicKey,
 }
 
 impl<E: Engine> SRS<E> {
@@ -43,9 +42,8 @@ impl<E: Engine> SRS<E> {
         let (_sk_sig, pk_sig): (SecretKey, VerificationKey) = usig.kgen();
 
         // generate srs KU-PKE keys
-        let lambda: usize = 128;
-        let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
-        let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
+        let sk = jubjub_elgamal::PrivateKey::new(&mut rand::thread_rng());
+        let pk = jubjub_elgamal::PublicKey::from(sk);
 
         SRS {
             d: d,
@@ -64,7 +62,7 @@ impl<E: Engine> SRS<E> {
             h_positive_x_alpha: vec![E::G2Affine::one(); d + 1],
 
             cpk: pk_sig,
-            pk: keypair_pke.pk,
+            pk: pk,
         }
     }
 
@@ -103,9 +101,8 @@ impl<E: Engine> SRS<E> {
         let (_sk_sig, pk_sig): (SecretKey, VerificationKey) = usig.kgen();
 
         // generate srs KU-PKE keys
-        let lambda: usize = 128;
-        let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
-        let keypair_pke: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
+        let sk = jubjub_elgamal::PrivateKey::new(&mut rand::thread_rng());
+        let pk = jubjub_elgamal::PublicKey::from(sk);
 
         SRS {
             d: d,
@@ -122,7 +119,7 @@ impl<E: Engine> SRS<E> {
             h_positive_x_alpha: table(alpha, x, d + 1, &mut g2),
 
             cpk: pk_sig,
-            pk: keypair_pke.pk,
+            pk: pk,
         }
     }
 }

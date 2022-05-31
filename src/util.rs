@@ -1,8 +1,8 @@
-use crate::kupke::Serialize;
 use crate::protocol::SonicProof;
 use crate::Statement;
 use crate::SynthesisError;
 use ed25519_dalek::{PublicKey, Signature};
+use jubjub_elgamal::Cypher as ElGamalCtext;
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, PrimeFieldRepr};
 use std::io;
@@ -10,7 +10,7 @@ use std::io;
 pub fn to_be_bytes<A: CurveAffine, F: pairing::PrimeField>(
     pi: &SonicProof<A, F>,
     x: &dyn Statement,
-    c: &elgamal::ElGamalCiphertext,
+    c: &ElGamalCtext,
     pk_l: &PublicKey,
     sigma: Signature,
 ) -> Vec<u8> {
@@ -395,6 +395,25 @@ impl<T> OptionExt<T> for Option<T> {
             None => Err(SynthesisError::AssignmentMissing),
         }
     }
+}
+
+pub fn bool_vec_to_bytes(vec: &Vec<Option<bool>>) -> [u8; 64] {
+    let len = vec.len();
+    assert!(len <= 512);
+    let mut out = [0; 64];
+
+    let mut slice = vec![Some(false); 64];
+    for i in 0..(len / 8) {
+        let start = i * 8;
+        let end = (i + 1) * 8;
+        slice.copy_from_slice(&vec[start..end]);
+        let tmp: u8 = vec
+            .iter()
+            .rev()
+            .fold(0, |acc, &b| (acc << 1) + b.unwrap() as u8);
+        out[i] = tmp;
+    }
+    out
 }
 
 pub fn bool_vec_to_big_int(vec: &Vec<Option<bool>>) -> curv::BigInt {

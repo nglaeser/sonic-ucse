@@ -2,7 +2,7 @@ use crate::batch::Batch;
 use crate::srs::SRS;
 use crate::synthesis::{Backend, SynthesisDriver};
 use crate::util::*;
-use crate::{BigIntable, Circuit, Coeff, Statement, SynthesisError, Variable};
+use crate::{Circuit, Coeff, Scalarable, Statement, SynthesisError, Variable};
 use ed25519_dalek::{Keypair, PublicKey, Signature, Signer};
 use lamport_sigs;
 use merlin::Transcript;
@@ -81,7 +81,7 @@ pub struct Proof<E: Engine> {
     rzy: E::Fr,
     z_opening: E::G1Affine,
     zy_opening: E::G1Affine,
-    c: elgamal::ElGamalCiphertext,
+    c: jubjub_elgamal::Cypher,
     pk_l: PublicKey,
     sigma: Signature,
     pk_ot: lamport_sigs::PublicKey,
@@ -736,19 +736,13 @@ pub fn create_advice<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     SxyAdvice { s, szy, opening }
 }
 
-pub fn create_proof<E: Engine, C: Statement + BigIntable + Circuit<E>, S: SynthesisDriver>(
+pub fn create_proof<E: Engine, C: Statement + Scalarable + Circuit<E>, S: SynthesisDriver>(
     circuit: &C, // contains witness
     srs: &SRS<E>,
 ) -> Result<Proof<E>, SynthesisError> // where 
 // <E as Engine>::G1Affine: UncompressedEncoding,
 // <E as Engine>::Fr: PrimeField
 {
-    // US keys
-    let mut csprng = OsRng {};
-    let keypair_l: Keypair = Keypair::generate(&mut csprng);
-    let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
-    let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
-
     struct Wires<E: Engine> {
         a: Vec<E::Fr>,
         b: Vec<E::Fr>,
@@ -976,15 +970,23 @@ pub fn create_proof<E: Engine, C: Statement + BigIntable + Circuit<E>, S: Synthe
         .into_affine()
     };
 
+    // US keys
+    let mut csprng = OsRng {};
+    let keypair_l: Keypair = Keypair::generate(&mut csprng);
+    let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
+    let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
+
     let pk_l: PublicKey = keypair_l.public;
     // \Sigma.Sign(sk_l, pk_OT)
     let pk_ot_message: &[u8] = &pk_ot.to_bytes();
     let sigma: Signature = keypair_l.sign(pk_ot_message);
 
     // encrypt the witness (circuit C)
-    let message: curv::BigInt = circuit.to_big_int();
+    use dusk_plonk::jubjub::{JubJubScalar, GENERATOR_EXTENDED};
+    let message = GENERATOR_EXTENDED * circuit.to_scalar();
     // let message = curv::BigInt::from(0);
-    let c: elgamal::ElGamalCiphertext = elgamal::ElGamal::encrypt(&message, &srs.pk).unwrap();
+    let rand = JubJubScalar::random(&mut rand::thread_rng());
+    let c: jubjub_elgamal::Cypher = srs.pk.encrypt(message, rand);
 
     let sonic_proof = SonicProof {
         r,
@@ -1321,9 +1323,9 @@ fn my_fun_circuit_test() {
             b""
         }
     }
-    impl BigIntable for MyCircuit {
-        fn to_big_int(&self) -> curv::BigInt {
-            curv::BigInt::from(0)
+    impl Scalarable for MyCircuit {
+        fn to_scalar(&self) -> dusk_plonk::jubjub::JubJubScalar {
+            dusk_plonk::jubjub::JubJubScalar::zero()
         }
     }
 

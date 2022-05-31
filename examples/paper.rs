@@ -9,9 +9,9 @@ use pairing::{Engine, Field, PrimeField};
 use sonic_ucse::protocol::*;
 use sonic_ucse::srs::SRS;
 use sonic_ucse::synthesis::*;
-use sonic_ucse::util::bool_vec_to_big_int;
+use sonic_ucse::util::bool_vec_to_bytes;
 use sonic_ucse::{
-    BigIntable, Circuit, Coeff, ConstraintSystem, LinearCombination, Statement, SynthesisError,
+    Circuit, Coeff, ConstraintSystem, LinearCombination, Scalarable, Statement, SynthesisError,
     Variable,
 };
 use std::marker::PhantomData;
@@ -166,9 +166,9 @@ impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircui
         Ok(())
     }
 }
-impl<C: BigIntable> BigIntable for AdaptorCircuit<C> {
-    fn to_big_int(&self) -> curv::BigInt {
-        self.0.to_big_int()
+impl<C: Scalarable> Scalarable for AdaptorCircuit<C> {
+    fn to_scalar(&self) -> dusk_plonk::jubjub::JubJubScalar {
+        self.0.to_scalar()
     }
 }
 impl<C: Statement> Statement for AdaptorCircuit<C> {
@@ -178,6 +178,7 @@ impl<C: Statement> Statement for AdaptorCircuit<C> {
 }
 
 fn main() {
+    use dusk_plonk::jubjub::JubJubScalar;
     use pairing::bls12_381::{Bls12, Fr, FrRepr};
     use std::time::Instant;
 
@@ -193,11 +194,12 @@ fn main() {
             b"fake statement instead of hash digest"
         }
     }
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> BigIntable
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Scalarable
         for PedersenHashPreimageCircuit<'a, E>
     {
-        fn to_big_int(&self) -> curv::BigInt {
-            bool_vec_to_big_int(&self.preimage)
+        fn to_scalar(&self) -> JubJubScalar {
+            assert!(self.preimage.len() <= 512);
+            JubJubScalar::from_bytes_wide(&bool_vec_to_bytes(&self.preimage))
         }
     }
     // trait Clone for PedersenHashPreimageCircuit
@@ -277,16 +279,19 @@ fn main() {
             b"TODO NG fake statement instead of hash digest, cpk, cpk_o"
         }
     }
-    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> BigIntable
+    impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Scalarable
         for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
     {
-        fn to_big_int(&self) -> curv::BigInt {
+        // TODO NG rename to `to_scalar`
+        fn to_scalar(&self) -> JubJubScalar {
             // TODO NG the below breaks elgamal::ElGamal::encrypt(&circuit.to_big_int(), &srs.pk) (outputs Err)
             // let left = bool_vec_to_big_int(&self.preimage);
             // let right = bool_vec_to_big_int(&self.shift);
             // (left << right.bit_length()) + right
+            assert!(self.preimage.len() <= 512);
+            JubJubScalar::from_bytes_wide(&bool_vec_to_bytes(&self.preimage))
 
-            bool_vec_to_big_int(&self.preimage)
+            // bool_vec_to_big_int(&self.preimage)
         }
     }
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
@@ -339,9 +344,10 @@ fn main() {
             b"TODO NG fake statement instead of hash digest"
         }
     }
-    impl BigIntable for SHA256PreimageCircuit {
-        fn to_big_int(&self) -> curv::BigInt {
-            bool_vec_to_big_int(&self.preimage)
+    impl Scalarable for SHA256PreimageCircuit {
+        fn to_scalar(&self) -> JubJubScalar {
+            assert!(self.preimage.len() <= 512);
+            JubJubScalar::from_bytes_wide(&bool_vec_to_bytes(&self.preimage))
         }
     }
     impl<E: Engine> bellman::Circuit<E> for SHA256PreimageCircuit {

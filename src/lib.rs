@@ -15,6 +15,9 @@ pub enum SynthesisError {
     Violation,
 }
 
+pub trait Scalarable {
+    fn to_scalar(&self) -> dusk_plonk::jubjub::JubJubScalar;
+}
 pub trait BigIntable {
     fn to_big_int(&self) -> curv::BigInt;
 }

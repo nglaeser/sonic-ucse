@@ -24,6 +24,8 @@ cargo test --test uc-se
 cargo test
 ```
 
+May need to use nightly build instead by replacing `cargo` with `cargo +nightly` in the above.
+
 Documentation:
 ```
 cargo doc --open
