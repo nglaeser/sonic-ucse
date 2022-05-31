@@ -18,10 +18,12 @@ ed25519-dalek = "1"
 curv-kzen = "0.9.0"
 curve25519-dalek = "3.2.1"
 byteorder = "1.4.3"
+dusk-plonk = "0.3.5"
+dusk-bls12_381 = "0.10.0"
 
 [dependencies.sapling-crypto]
-git = "https://github.com/zcash-hackworks/sapling-crypto"
-rev = "eb409fa3cf8df215ae8d35f5e385751a0c5ffb85"
+git = "https://github.com/nglaeser/sapling-crypto"
+rev = "40d7594c48b6480f717ef714b4d439a36516a54b"
 
 [dependencies.elgamal]
 git = "https://github.com/ZenGo-X/rust-elgamal"
@@ -29,4 +31,7 @@ rev = "3d6ef02da517ad1b8ec72a6f6fd7dcccab296cd3"
 
 [dependencies.starsig]
 git = "https://github.com/nglaeser/starsig"
-rev = "2727a3b9331eea48316b95d4f72f95a8a918f2c6"
+
+[dependencies.jubjub-elgamal]
+package = "elgamal"
+git = "https://github.com/nglaeser/jubjub-elgamal"

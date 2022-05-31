@@ -32,21 +32,60 @@ mod tests {
         assert_eq!(message, ptext.unwrap());
     }
 
+    use dusk_plonk::jubjub::{JubJubExtended, JubJubScalar, GENERATOR_EXTENDED};
+    use jubjub_elgamal::{Cypher, PrivateKey, PublicKey};
+    #[test]
+    fn test_jubjub_kupke() {
+        // keygen
+        let sk = PrivateKey::new(&mut rand::thread_rng());
+        let pk = PublicKey::from(sk);
+
+        let message = GENERATOR_EXTENDED * JubJubScalar::random(&mut rand::thread_rng());
+
+        // enc
+        let r = JubJubScalar::random(&mut rand::thread_rng());
+        let ctext: Cypher = pk.encrypt(message, r);
+
+        // dec
+        let ptext: JubJubExtended = ctext.decrypt(sk);
+
+        assert_eq!(message, ptext);
+    }
+
     use sonic_ucse::kupke::{KeyUpdate, SKeyUpdate};
     #[test]
     fn test_kupke_update() {
         let lambda: usize = 128;
         let pp: ElGamalPP = ElGamalPP::generate_safe(lambda);
         let mut keypair: ElGamalKeyPair = ElGamalKeyPair::generate(&pp);
-        let message = BigInt::from(42);
+        let message = BigInt::from(42 as u64);
 
-        let up_sk = keypair.pk.upk();
+        let mut csprng = rand::rngs::OsRng {};
+        let up_sk = keypair.pk.upk(&mut csprng);
         let sk_up: ElGamalPrivateKey = keypair.sk.usk(&up_sk);
         let ctext_up: ElGamalCiphertext = ElGamal::encrypt(&message, &keypair.pk).unwrap();
         // TODO NG probably make upk just directly update the keypair
         let ptext_up: Result<BigInt, ElGamalError> = ElGamal::decrypt(&ctext_up, &sk_up);
 
         assert_eq!(message, ptext_up.unwrap());
+    }
+    #[test]
+    fn test_jubjub_kupke_update() {
+        // check that keys are still a valid keypair after update
+        // i.e., Dec(sk_up, Enc(pk_up, m)) == m
+        let sk = PrivateKey::new(&mut rand::thread_rng());
+        let mut pk = PublicKey::from(sk);
+        let message = GENERATOR_EXTENDED * JubJubScalar::random(&mut rand::thread_rng());
+
+        let mut csprng = rand::rngs::OsRng {};
+        let up_sk = pk.upk(&mut csprng); // updates pk as well
+        let sk_up: PrivateKey = sk.usk(&up_sk);
+
+        let r = JubJubScalar::random(&mut rand::thread_rng());
+        let ctext_up: Cypher = pk.encrypt(message, r);
+        let ptext_up: JubJubExtended = ctext_up.decrypt(sk_up);
+
+        assert_eq!(message, ptext_up);
     }
 
     #[test]
@@ -122,6 +161,6 @@ mod tests {
 
         // verify
         assert!(usig.verify(pk, message, sigma).is_ok());
-        assert!(false);
+        assert!(false); // reminder to fix todo above
     }
 }

@@ -178,7 +178,7 @@ impl<C: Statement> Statement for AdaptorCircuit<C> {
 }
 
 fn main() {
-    use pairing::bls12_381::{Bls12, Fr};
+    use pairing::bls12_381::{Bls12, Fr, FrRepr};
     use std::time::Instant;
 
     // 'a is a named lifetime (borrowed pointers are required to have lifetimes in impls)
@@ -243,7 +243,7 @@ fn main() {
     }
 
     // Language for Pedersen preimage OR cpk shift
-    use sapling_crypto::circuit::{ecc::EdwardsPoint, num::AllocatedNum};
+    use sapling_crypto::circuit::ecc::EdwardsPoint;
     use sapling_crypto::jubjub::edwards::Point;
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
         for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
@@ -277,7 +277,6 @@ fn main() {
             b"TODO NG fake statement instead of hash digest, cpk, cpk_o"
         }
     }
-    use curv::arithmetic::BitManipulation;
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> BigIntable
         for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
     {
@@ -405,23 +404,21 @@ fn main() {
         - Switch to a jubjub-based ElGamal, since changing the curve over which the Sonic circuit operates would be a pain in the ass (if not nigh on impossible; anyway, it would wreck any one-to-one comparison to previous work). Here is an implementation of ElGamal for Jubjub (would still have to add updatability): https://github.com/dusk-network/ElGamal.
         */
 
-        // let cpk_o_jubjub = srs.cpk.into_point().decompress().unwrap();
+        // set cpk_o to the generator of the prime-order subgroup
+        use dusk_plonk::jubjub::{JubJubExtended, GENERATOR_EXTENDED};
+        let cpk_o_dusk: JubJubExtended = GENERATOR_EXTENDED;
+        let cpk_o_sapling: Point<_, PrimeOrder> = sapling_crypto::jubjub::edwards::Point::new(
+            Fr::from_repr(FrRepr(cpk_o_dusk.get_x().0)).unwrap(), // convert from BlsScalar to (Bls12::)Fr
+            Fr::from_repr(FrRepr(cpk_o_dusk.get_y().0)).unwrap(),
+            Fr::from_repr(FrRepr((cpk_o_dusk.get_t1() * cpk_o_dusk.get_t2()).0)).unwrap(),
+            Fr::from_repr(FrRepr(cpk_o_dusk.get_z().0)).unwrap(),
+        );
 
-        // let cpk_o_dalek = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT.0;
-        // let cpk_o_jubjub: Point<_, PrimeOrder> = sapling_crypto::jubjub::edwards::Point {
-        //     x: cpk_o_dalek.X,
-        //     y: cpk_o_dalek.Y,
-        //     z: cpk_o_dalek.Z,
-        //     t: cpk_o_dalek.T,
-        //     _marker: PhantomData,
-        // };
-
-        let cpk_o_jubjub: Point<_, PrimeOrder> = Point::zero(); // TODO NG should be cpk_o = generator of prime order subgroup (of Jubjub)
         let circuit = PedersenHashPreimageORShiftCircuit {
             preimage: vec![Some(true); PEDERSEN_PREIMAGE_BITS],
             params: &params,
             shift: vec![Some(true); std::convert::TryInto::try_into(JUBJUB_SCALAR_BITS).unwrap()],
-            cpk_o: cpk_o_jubjub,
+            cpk_o: cpk_o_sapling,
         };
 
         println!("creating proof");
