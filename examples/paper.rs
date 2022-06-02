@@ -1,5 +1,4 @@
 extern crate bellman;
-extern crate ed25519_dalek;
 extern crate pairing;
 extern crate rand;
 extern crate sapling_crypto;
@@ -400,22 +399,16 @@ fn main() {
 
         let params = sapling_crypto::jubjub::JubjubBls12::new();
 
-        /*
-        TODO NG: need to input cpk_o (and cpk) into the circuit as `sapling_crypto::jubjub::edwards::Point`s. The circuit will check for some (scalar) witness w := shift that cpk_o * shift = cpk (remember ECs are additive groups).
-
-        The problem is that cpk, cpk_o are kupke public keys, and that implementation uses rust-elgamal which is built on curve25519. This means that they are elements of (the Ristretto group of) curve25519, *not* the jubjub group used by the circuit! These are different (sub)groups, with different order, and afaik there is no generic way to convert between different elliptic curve groups of different order.
-
-        Possible solutions:
-        - Use a non-BB approach to convert between the groups, something like this: https://crypto.stackexchange.com/questions/89362/is-there-any-way-to-mapping-point-between-2-elliptic-curves. The idea is to convert cpk, cpk_o to elements *of the same order* on the other curve. But finding these elements of the same order looks like it could be very inefficient (brute force?). (A way to check order on curve25519 is given here: https://docs.rs/curve25519-dalek/latest/src/curve25519_dalek/edwards.rs.html#1158.)
-        - Switch to a jubjub-based ElGamal, since changing the curve over which the Sonic circuit operates would be a pain in the ass (if not nigh on impossible; anyway, it would wreck any one-to-one comparison to previous work). Here is an implementation of ElGamal for Jubjub (would still have to add updatability): https://github.com/dusk-network/ElGamal.
-        */
+        // TODO NG: also input cpk into the circuit (circuit will check for some (scalar) witness w := shift that cpk_o * shift = cpk (remember ECs are additive groups))
 
         // set cpk_o to the generator of the prime-order subgroup
         use dusk_plonk::jubjub::{JubJubExtended, GENERATOR_EXTENDED};
         let cpk_o_dusk: JubJubExtended = GENERATOR_EXTENDED;
         let cpk_o_sapling: Point<_, PrimeOrder> = sapling_crypto::jubjub::edwards::Point::new(
-            Fr::from_repr(FrRepr(cpk_o_dusk.get_x().0)).unwrap(), // convert from BlsScalar to (Bls12::)Fr
+            // convert each coordiniate from BlsScalar to (Bls12::)Fr
+            Fr::from_repr(FrRepr(cpk_o_dusk.get_x().0)).unwrap(),
             Fr::from_repr(FrRepr(cpk_o_dusk.get_y().0)).unwrap(),
+            // T = T1 * T2 = XY/Z
             Fr::from_repr(FrRepr((cpk_o_dusk.get_t1() * cpk_o_dusk.get_t2()).0)).unwrap(),
             Fr::from_repr(FrRepr(cpk_o_dusk.get_z().0)).unwrap(),
         );

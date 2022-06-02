@@ -1,6 +1,5 @@
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, Wnaf};
 // use rand::rngs::OsRng;
-// use ed25519_dalek::{Keypair,PublicKey};
 use crate::usig::{SecretKey, Sig, Starsig};
 use starsig::VerificationKey;
 

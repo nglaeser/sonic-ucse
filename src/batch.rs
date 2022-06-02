@@ -10,10 +10,11 @@
 
 use crate::protocol::SonicProof;
 use crate::srs::SRS;
+use crate::usig::*;
 use crate::util::multiexp;
 use crate::Statement;
-use ed25519_dalek::{PublicKey, Signature, Verifier};
 use pairing::{CurveAffine, CurveProjective, Engine, Field};
+use starsig::{Signature, VerificationKey};
 
 // One of the primary functions of the `Batch` abstraction is handling
 // Kate commitment openings:
@@ -52,7 +53,7 @@ pub struct Batch<E: Engine> {
 
     // new (UC SE) proof elements
     c: Vec<jubjub_elgamal::Cypher>,
-    pk_l: Vec<PublicKey>,
+    pk_l: Vec<VerificationKey>,
     sigma: Vec<Signature>,
     pk_ot: Vec<lamport_sigs::PublicKey>,
     sigma_ot: Vec<Result<Vec<Vec<u8>>, &'static str>>,
@@ -114,7 +115,7 @@ impl<E: Engine> Batch<E> {
         self.value.add_assign(&r);
     }
 
-    pub fn add_pk(&mut self, pk: PublicKey) {
+    pub fn add_pk(&mut self, pk: VerificationKey) {
         self.pk_l.push(pk);
     }
 
@@ -144,6 +145,8 @@ impl<E: Engine> Batch<E> {
         // verify all the sigmas
         {
             use crate::util::to_be_bytes;
+            let usig = Starsig;
+            use merlin::Transcript;
 
             for ((pk, pk_ot), sigma) in self
                 .pk_l
@@ -151,8 +154,10 @@ impl<E: Engine> Batch<E> {
                 .zip(self.pk_ot.iter())
                 .zip(self.sigma.iter())
             {
-                let message: &[u8] = &pk_ot.to_bytes();
-                if !pk.verify(message, sigma).is_ok() {
+                // let message_bytes: &[u8] = &pk_ot.to_bytes();
+                let message_bytes: &[u8] = b"TODO NG";
+                let mut message: Transcript = Transcript::new(message_bytes);
+                if !usig.verify(*pk, &mut message, *sigma).is_ok() {
                     return false;
                 }
             }

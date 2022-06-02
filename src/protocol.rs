@@ -1,14 +1,15 @@
 use crate::batch::Batch;
 use crate::srs::SRS;
 use crate::synthesis::{Backend, SynthesisDriver};
+use crate::usig::*;
 use crate::util::*;
 use crate::{Circuit, Coeff, Scalarable, Statement, SynthesisError, Variable};
-use ed25519_dalek::{Keypair, PublicKey, Signature, Signer};
 use lamport_sigs;
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field};
 use rand::rngs::OsRng;
 use ring::digest::SHA256;
+use starsig::{Signature, VerificationKey};
 use std::marker::PhantomData;
 // use ring::digest::{Algorithm, SHA512};
 // static DIGEST_256: &Algorithm = &SHA256; // TODO NG decide which SHA to use
@@ -82,7 +83,7 @@ pub struct Proof<E: Engine> {
     z_opening: E::G1Affine,
     zy_opening: E::G1Affine,
     c: jubjub_elgamal::Cypher,
-    pk_l: PublicKey,
+    pk_l: VerificationKey,
     sigma: Signature,
     pk_ot: lamport_sigs::PublicKey,
     sigma_ot: Result<Vec<Vec<u8>>, &'static str>,
@@ -971,15 +972,15 @@ pub fn create_proof<E: Engine, C: Statement + Scalarable + Circuit<E>, S: Synthe
     };
 
     // US keys
-    let mut csprng = OsRng {};
-    let keypair_l: Keypair = Keypair::generate(&mut csprng);
+    let usig = Starsig;
+    let (sk_l, pk_l): (SecretKey, VerificationKey) = usig.kgen();
     let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
     let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
 
-    let pk_l: PublicKey = keypair_l.public;
     // \Sigma.Sign(sk_l, pk_OT)
-    let pk_ot_message: &[u8] = &pk_ot.to_bytes();
-    let sigma: Signature = keypair_l.sign(pk_ot_message);
+    // let pk_ot_message: &[u8] = &pk_ot.to_bytes();
+    let pk_ot_message: &[u8] = b"TODO NG";
+    let sigma: Signature = usig.sign(sk_l, &mut Transcript::new(pk_ot_message));
 
     // encrypt the witness (circuit C)
     use dusk_plonk::jubjub::{JubJubScalar, GENERATOR_EXTENDED};

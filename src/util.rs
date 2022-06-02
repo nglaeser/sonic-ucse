@@ -1,24 +1,24 @@
 use crate::protocol::SonicProof;
 use crate::Statement;
 use crate::SynthesisError;
-use ed25519_dalek::{PublicKey, Signature};
 use jubjub_elgamal::Cypher as ElGamalCtext;
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, PrimeFieldRepr};
+use starsig::{Signature, VerificationKey};
 use std::io;
 
 pub fn to_be_bytes<A: CurveAffine, F: pairing::PrimeField>(
     pi: &SonicProof<A, F>,
     x: &dyn Statement,
     c: &ElGamalCtext,
-    pk_l: &PublicKey,
+    pk_l: &VerificationKey,
     sigma: Signature,
 ) -> Vec<u8> {
     [
         &pi.to_bytes(),    // sonic_bytes,
         x.get_statement(), // x_bytes,
         &c.to_bytes(),     // &c_bytes,
-        &pk_l.to_bytes(),  // &pk_l_bytes,
+        pk_l.as_bytes(),   // &pk_l_bytes,
         &sigma.to_bytes(), // &sigma_bytes
     ]
     .concat()

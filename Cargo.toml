@@ -1,7 +1,10 @@
 [package]
 name = "sonic-ucse"
 version = "0.1.0"
-authors = ["Sean Bowe <ewillbefull@gmail.com>", "Noemi Glaeser <nglaeser@umd.edu>"]
+authors = [
+    "Sean Bowe <ewillbefull@gmail.com>",
+    "Noemi Glaeser <nglaeser@umd.edu>",
+    ]
 edition = "2018"
 
 [dependencies.pairing]
@@ -14,7 +17,6 @@ rand = "0.7"
 bellman = "0.1.0"
 lamport_sigs = "0.7.0"
 ring = "0.16.15"
-ed25519-dalek = "1"
 curv-kzen = "0.9.0"
 curve25519-dalek = "3.2.1"
 byteorder = "1.4.3"

@@ -13,8 +13,8 @@ use std::ops::{Add, Mul};
 pub struct Starsig;
 pub trait Sig<SK, VK, S, E> {
     fn kgen(&self) -> (SK, VK);
-    fn sign(&self, _: SK, _: &'static [u8]) -> S;
-    fn verify(&self, _: VK, _: &'static [u8], _: S) -> Result<(), E>;
+    fn sign(&self, _: SK, _: &mut Transcript) -> S;
+    fn verify(&self, _: VK, _: &mut Transcript, _: S) -> Result<(), E>;
 }
 use starsig::{Signature, StarsigError, VerificationKey};
 
@@ -76,16 +76,16 @@ impl Sig<SecretKey, VerificationKey, Signature, StarsigError> for Starsig {
         let pk = VerificationKey::from_secret(&sk.scalar);
         (sk, pk)
     }
-    fn sign(&self, sk: SecretKey, m: &'static [u8]) -> Signature {
-        Signature::sign(&mut Transcript::new(m), sk.scalar)
+    fn sign(&self, sk: SecretKey, m: &mut Transcript) -> Signature {
+        Signature::sign(m, sk.scalar)
     }
     fn verify(
         &self,
         vk: VerificationKey,
-        m: &'static [u8],
+        m: &mut Transcript,
         sigma: Signature,
     ) -> Result<(), StarsigError> {
-        sigma.verify(&mut Transcript::new(m), vk)
+        sigma.verify(m, vk)
     }
 }
 
@@ -123,7 +123,7 @@ pub trait UpdatableSig<SK, VK, S, T: Copy + Clone> {
     // pk_up := pk mu(`op`) up_sk
     fn upk(&self, _: VK) -> (VK, Update<T>);
     fn usk(&self, _: SK, _: Update<T>) -> SK;
-    fn usig(&self, _: &'static [u8], _: S, _: Update<T>) -> S;
+    fn usig(&self, _: &mut Transcript, _: S, _: Update<T>) -> S;
 }
 impl UpdatableSig<SecretKey, VerificationKey, Signature, Scalar> for Starsig {
     fn upk(&self, pk: VerificationKey) -> (VerificationKey, Update<Scalar>) {
@@ -138,10 +138,10 @@ impl UpdatableSig<SecretKey, VerificationKey, Signature, Scalar> for Starsig {
     fn usk(&self, sk: SecretKey, up: Update<Scalar>) -> SecretKey {
         sk.update(up)
     }
-    fn usig(&self, m: &'static [u8], sigma: Signature, up: Update<Scalar>) -> Signature {
+    fn usig(&self, transcript: &mut Transcript, sigma: Signature, up: Update<Scalar>) -> Signature {
         // sigma_up := sigma + c * up_sk
         //           = (r + c * sk) + c * up_sk = r + c * sk_up
-        let mut transcript = Transcript::new(m);
+        // let mut transcript = Transcript::new(m);
         let c = {
             transcript.starsig_domain_sep();
             transcript.append_point(b"R", &sigma.R);
