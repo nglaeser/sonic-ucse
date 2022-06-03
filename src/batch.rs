@@ -146,18 +146,14 @@ impl<E: Engine> Batch<E> {
         {
             use crate::util::to_be_bytes;
             let usig = Starsig;
-            use merlin::Transcript;
-
             for ((pk, pk_ot), sigma) in self
                 .pk_l
                 .iter()
                 .zip(self.pk_ot.iter())
                 .zip(self.sigma.iter())
             {
-                // let message_bytes: &[u8] = &pk_ot.to_bytes();
-                let message_bytes: &[u8] = b"TODO NG";
-                let mut message: Transcript = Transcript::new(message_bytes);
-                if !usig.verify(*pk, &mut message, *sigma).is_ok() {
+                let message_bytes: Vec<u8> = pk_ot.to_bytes();
+                if !usig.verify(*pk, &message_bytes, *sigma).is_ok() {
                     return false;
                 }
             }

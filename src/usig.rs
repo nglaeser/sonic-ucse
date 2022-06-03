@@ -13,8 +13,8 @@ use std::ops::{Add, Mul};
 pub struct Starsig;
 pub trait Sig<SK, VK, S, E> {
     fn kgen(&self) -> (SK, VK);
-    fn sign(&self, _: SK, _: &mut Transcript) -> S;
-    fn verify(&self, _: VK, _: &mut Transcript, _: S) -> Result<(), E>;
+    fn sign(&self, _: SK, _: &[u8]) -> S;
+    fn verify(&self, _: VK, _: &[u8], _: S) -> Result<(), E>;
 }
 use starsig::{Signature, StarsigError, VerificationKey};
 
@@ -48,6 +48,7 @@ where
     fn update(self, _: Update<T>) -> Self;
 }
 // how to update starsig secret and public keys
+// TODO these ops will not work for dlog proof of update
 impl Updatable<Scalar> for SecretKey {
     fn update(self, up: Update<Scalar>) -> Self {
         // for starsig sk, `op` is +
@@ -64,7 +65,8 @@ impl Updatable<Scalar> for VerificationKey {
         //        = sk_up * RISTRETTO_BASEPOINT_POINT
         let pk_compressed: CompressedRistretto = self.into();
         let pk_point: RistrettoPoint = pk_compressed.decompress().unwrap();
-        VerificationKey::from(pk_point + (up * RISTRETTO_BASEPOINT_POINT))
+        let pk_up = VerificationKey::from(pk_point + (up * RISTRETTO_BASEPOINT_POINT));
+        pk_up // TODO add proof
     }
 }
 
@@ -76,16 +78,11 @@ impl Sig<SecretKey, VerificationKey, Signature, StarsigError> for Starsig {
         let pk = VerificationKey::from_secret(&sk.scalar);
         (sk, pk)
     }
-    fn sign(&self, sk: SecretKey, m: &mut Transcript) -> Signature {
-        Signature::sign(m, sk.scalar)
+    fn sign(&self, sk: SecretKey, m: &[u8]) -> Signature {
+        Signature::sign_message(b"signature", m, sk.scalar)
     }
-    fn verify(
-        &self,
-        vk: VerificationKey,
-        m: &mut Transcript,
-        sigma: Signature,
-    ) -> Result<(), StarsigError> {
-        sigma.verify(m, vk)
+    fn verify(&self, vk: VerificationKey, m: &[u8], sigma: Signature) -> Result<(), StarsigError> {
+        sigma.verify_message(b"signature", m, vk)
     }
 }
 
@@ -123,7 +120,7 @@ pub trait UpdatableSig<SK, VK, S, T: Copy + Clone> {
     // pk_up := pk mu(`op`) up_sk
     fn upk(&self, _: VK) -> (VK, Update<T>);
     fn usk(&self, _: SK, _: Update<T>) -> SK;
-    fn usig(&self, _: &mut Transcript, _: S, _: Update<T>) -> S;
+    fn usig(&self, _: &[u8], _: S, _: Update<T>) -> S;
 }
 impl UpdatableSig<SecretKey, VerificationKey, Signature, Scalar> for Starsig {
     fn upk(&self, pk: VerificationKey) -> (VerificationKey, Update<Scalar>) {
@@ -138,10 +135,11 @@ impl UpdatableSig<SecretKey, VerificationKey, Signature, Scalar> for Starsig {
     fn usk(&self, sk: SecretKey, up: Update<Scalar>) -> SecretKey {
         sk.update(up)
     }
-    fn usig(&self, transcript: &mut Transcript, sigma: Signature, up: Update<Scalar>) -> Signature {
+    fn usig(&self, m: &[u8], sigma: Signature, up: Update<Scalar>) -> Signature {
         // sigma_up := sigma + c * up_sk
         //           = (r + c * sk) + c * up_sk = r + c * sk_up
-        // let mut transcript = Transcript::new(m);
+        let mut transcript = Transcript::new(b"Starsig.sign_message");
+        transcript.append_message(b"signature", m);
         let c = {
             transcript.starsig_domain_sep();
             transcript.append_point(b"R", &sigma.R);

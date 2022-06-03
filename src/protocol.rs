@@ -7,7 +7,6 @@ use crate::{Circuit, Coeff, Scalarable, Statement, SynthesisError, Variable};
 use lamport_sigs;
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field};
-use rand::rngs::OsRng;
 use ring::digest::SHA256;
 use starsig::{Signature, VerificationKey};
 use std::marker::PhantomData;
@@ -978,9 +977,8 @@ pub fn create_proof<E: Engine, C: Statement + Scalarable + Circuit<E>, S: Synthe
     let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
 
     // \Sigma.Sign(sk_l, pk_OT)
-    // let pk_ot_message: &[u8] = &pk_ot.to_bytes();
-    let pk_ot_message: &[u8] = b"TODO NG";
-    let sigma: Signature = usig.sign(sk_l, &mut Transcript::new(pk_ot_message));
+    let pk_ot_message: Vec<u8> = pk_ot.to_bytes();
+    let sigma: Signature = usig.sign(sk_l, &pk_ot_message);
 
     // encrypt the witness (circuit C)
     use dusk_plonk::jubjub::{JubJubScalar, GENERATOR_EXTENDED};
