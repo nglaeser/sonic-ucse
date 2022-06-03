@@ -1,25 +1,33 @@
-use dusk_plonk::jubjub::{JubJubExtended, JubJubScalar, GENERATOR_EXTENDED};
+use crate::dlog::*;
+use dusk_plonk::jubjub::{JubJubExtended, JubJubScalar};
 use jubjub_elgamal::{PrivateKey, PublicKey};
+use merlin::Transcript;
 use rand::{CryptoRng, Rng};
 use std::ops::Mul;
 
 pub trait KeyUpdate<T, R> {
-    fn upk(&mut self, rng: R) -> SKUpdate<T>;
+    fn upk(&mut self, rng: R) -> (SKUpdate<T>, DLogProof);
 }
 impl<R> KeyUpdate<JubJubScalar, R> for PublicKey
 where
     R: Rng + CryptoRng,
 {
-    fn upk(&mut self, rng: R) -> SKUpdate<JubJubScalar> {
-        // because sk_up = sk + up_sk
-        //     and pk = sk * GENERATOR_EXTENDED
+    fn upk(&mut self, rng: R) -> (SKUpdate<JubJubScalar>, DLogProof) {
+        // because sk_up = sk * up_sk
+        //     and pk = GENERATOR_EXTENDED * sk
         // we have
-        // pk_up := sk_up * GENERATOR_EXTENDED
-        //        = (sk + up_sk) * GENERATOR_EXTENDED
-        //        = pk + (up_sk * GENERATOR_EXTENDED)
+        // pk_up := GENERATOR_EXTENDED * sk_up
+        //        = GENERATOR_EXTENDED * (sk * up_sk)
+        //        = pk * up_sk
         let up_sk: SKUpdate<JubJubScalar> = SKUpdate::<JubJubScalar>::random(rng);
-        *self += GENERATOR_EXTENDED * &up_sk;
-        up_sk // TODO add proof
+        let pk_prev = self.clone();
+        // *self += GENERATOR_EXTENDED * &up_sk;
+        *self *= up_sk.up;
+
+        let mut transcript = Transcript::new(&[]);
+        let proof = prove_dlog(&mut transcript, &self.0, &pk_prev.0, &up_sk.up);
+
+        (up_sk, proof) // TODO should the proof be verified anywhere?
     }
 }
 
@@ -28,8 +36,8 @@ pub trait SKeyUpdate<T> {
 }
 impl SKeyUpdate<JubJubScalar> for PrivateKey {
     fn usk(&self, up_sk: &SKUpdate<JubJubScalar>) -> Self {
-        // sk_up := sk + up_sk
-        *self + up_sk.up
+        // sk_up := sk * up_sk
+        *self * up_sk.up
     }
 }
 

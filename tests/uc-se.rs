@@ -7,6 +7,7 @@ mod tests {
     use merlin::Transcript;
     use pairing::bls12_381::Fr;
     use pairing::bls12_381::G1Affine;
+    use sonic_ucse::dlog::*;
     use sonic_ucse::protocol::*;
     use sonic_ucse::usig::*;
     use starsig::{Signature, VerificationKey};
@@ -33,21 +34,39 @@ mod tests {
 
     use sonic_ucse::kupke::{KeyUpdate, SKeyUpdate};
     #[test]
+    fn test_kupke_update_proof() {
+        // gen keypair
+        let sk = PrivateKey::new(&mut rand::thread_rng());
+        let mut pk = PublicKey::from(sk);
+
+        // get update proof
+        let mut csprng = rand::rngs::OsRng {};
+        let pk_prev = pk.clone();
+        let (up_sk, proof) = pk.upk(&mut csprng);
+
+        // check that the update is correct
+        assert_eq!(pk_prev.0 * up_sk.up, pk.0);
+
+        // check that update proof verifies
+        let mut transcript_verifier = Transcript::new(&[]);
+        assert!(vrfy_dlog(&mut transcript_verifier, &pk.0, &pk_prev.0, proof).is_ok());
+    }
+    #[test]
     fn test_kupke_update() {
-        // check that keys are still a valid keypair after update
-        // i.e., Dec(sk_up, Enc(pk_up, m)) == m
         let sk = PrivateKey::new(&mut rand::thread_rng());
         let mut pk = PublicKey::from(sk);
         let message = GENERATOR_EXTENDED * JubJubScalar::random(&mut rand::thread_rng());
 
         let mut csprng = rand::rngs::OsRng {};
-        let up_sk = pk.upk(&mut csprng); // updates pk as well
+        let (up_sk, _proof) = pk.upk(&mut csprng); // updates pk as well
         let sk_up: PrivateKey = sk.usk(&up_sk);
 
         let r = JubJubScalar::random(&mut rand::thread_rng());
         let ctext_up: Cypher = pk.encrypt(message, r);
         let ptext_up: JubJubExtended = ctext_up.decrypt(sk_up);
 
+        // check that keys are still a valid keypair after update
+        // i.e., Dec(sk_up, Enc(pk_up, m)) == m
         assert_eq!(message, ptext_up);
     }
 
