@@ -281,7 +281,6 @@ fn main() {
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Scalarable
         for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
     {
-        // TODO NG rename to `to_scalar`
         fn to_scalar(&self) -> JubJubScalar {
             // TODO NG the below breaks elgamal::ElGamal::encrypt(&circuit.to_big_int(), &srs.pk) (outputs Err)
             // let left = bool_vec_to_big_int(&self.preimage);

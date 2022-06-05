@@ -4,7 +4,6 @@ mod tests {
     extern crate sonic_ucse;
 
     use lamport_sigs;
-    use merlin::Transcript;
     use pairing::bls12_381::Fr;
     use pairing::bls12_381::G1Affine;
     use sonic_ucse::dlog::*;
@@ -48,7 +47,7 @@ mod tests {
         assert_eq!(pk_prev.0 * up_sk.up, pk.0);
 
         // check that update proof verifies
-        let mut transcript_verifier = Transcript::new(&[]);
+        let mut transcript_verifier = DLogProtocol::<JubJub>::new(&[]);
         assert!(vrfy_dlog(&mut transcript_verifier, &pk.0, &pk_prev.0, proof).is_ok());
     }
     #[test]
@@ -89,7 +88,29 @@ mod tests {
         // verify
         assert!(usig.verify(pk, message, sigma).is_ok());
     }
+    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+    #[test]
+    fn test_usig_update_proof() {
+        // gen keypair
+        let usig = Starsig;
+        let (sk, pk): (SecretKey, VerificationKey) = usig.kgen();
 
+        // get update proof
+        let (pk_up, up_sk, proof) = usig.upk(pk);
+
+        // check that the update is correct
+        assert_eq!(pk_up, pk.add(up_sk * RISTRETTO_BASEPOINT_POINT));
+
+        // check that update proof verifies
+        let mut transcript_verifier = DLogProtocol::<Ristretto>::new(&[]);
+        assert!(vrfy_dlog(
+            &mut transcript_verifier,
+            &(pk_up.point.decompress().unwrap() - pk.point.decompress().unwrap()),
+            &RISTRETTO_BASEPOINT_POINT,
+            proof
+        )
+        .is_ok());
+    }
     #[test]
     fn test_usig_update() {
         let usig = Starsig;
@@ -98,7 +119,7 @@ mod tests {
         let sigma: Signature = usig.sign(sk, message);
 
         // update sk, pk
-        let (pk_up, up_sk) = usig.upk(pk);
+        let (pk_up, up_sk, _proof) = usig.upk(pk);
         let sk_up = usig.usk(sk, up_sk);
         assert_eq!(pk_up, VerificationKey::from_secret(&(sk_up.scalar)));
 

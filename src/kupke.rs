@@ -1,18 +1,17 @@
 use crate::dlog::*;
 use dusk_plonk::jubjub::{JubJubExtended, JubJubScalar};
 use jubjub_elgamal::{PrivateKey, PublicKey};
-use merlin::Transcript;
 use rand::{CryptoRng, Rng};
 use std::ops::Mul;
 
 pub trait KeyUpdate<T, R> {
-    fn upk(&mut self, rng: R) -> (SKUpdate<T>, DLogProof);
+    fn upk(&mut self, rng: R) -> (SKUpdate<T>, DLogProof<JubJub>);
 }
 impl<R> KeyUpdate<JubJubScalar, R> for PublicKey
 where
     R: Rng + CryptoRng,
 {
-    fn upk(&mut self, rng: R) -> (SKUpdate<JubJubScalar>, DLogProof) {
+    fn upk(&mut self, rng: R) -> (SKUpdate<JubJubScalar>, DLogProof<JubJub>) {
         // because sk_up = sk * up_sk
         //     and pk = GENERATOR_EXTENDED * sk
         // we have
@@ -24,7 +23,7 @@ where
         // *self += GENERATOR_EXTENDED * &up_sk;
         *self *= up_sk.up;
 
-        let mut transcript = Transcript::new(&[]);
+        let mut transcript = DLogProtocol::new(&[]);
         let proof = prove_dlog(&mut transcript, &self.0, &pk_prev.0, &up_sk.up);
 
         (up_sk, proof) // TODO should the proof be verified anywhere?

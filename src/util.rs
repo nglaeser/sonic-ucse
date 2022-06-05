@@ -398,11 +398,13 @@ impl<T> OptionExt<T> for Option<T> {
 }
 
 pub fn bool_vec_to_bytes(vec: &Vec<Option<bool>>) -> [u8; 64] {
+    // unwrap each Option<bool> into a bit
+    // re-interpret the bit vector as a byte vector
     let len = vec.len();
     assert!(len <= 512);
     let mut out = [0; 64];
 
-    let mut slice = vec![Some(false); 64];
+    let mut slice = vec![Some(false); 8];
     for i in 0..(len / 8) {
         let start = i * 8;
         let end = (i + 1) * 8;
