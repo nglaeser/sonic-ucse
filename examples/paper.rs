@@ -255,6 +255,8 @@ fn main() {
                 params: self.params,
                 shift: self.shift.clone(),
                 cpk_o: self.cpk_o.clone(),
+                cpk: self.cpk.clone(),
+                digest: self.digest.clone(),
             }
         }
     }
@@ -268,8 +270,8 @@ fn main() {
         shift: Vec<Option<bool>>, // shift is a scalar
         // TODO NG this is part of statement not witness
         cpk_o: Point<E, Subgroup>,
-        // cpk: Point<E, Subgroup>,
-        // digest: Vec<Option<bool>>,
+        cpk: Point<E, Subgroup>,
+        digest: Point<E, Subgroup>,
     }
     impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Statement
         for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
@@ -301,6 +303,7 @@ fn main() {
         ) -> Result<(), bellman::SynthesisError> {
             //use bellman::ConstraintSystem;
             use sapling_crypto::circuit::boolean::{AllocatedBit, Boolean};
+            use sapling_crypto::circuit::num::{AllocatedNum, Num};
             use sapling_crypto::circuit::pedersen_hash;
 
             let mut preimage = vec![];
@@ -312,21 +315,60 @@ fn main() {
             for &bit in self.shift.iter() {
                 shift.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
             }
-            let cpk_o_point = EdwardsPoint::witness(&mut *cs, Some(self.cpk_o), self.params)?;
-            cpk_o_point.inputize(&mut *cs)?;
+            // let cpk_o_point = EdwardsPoint::witness(&mut *cs, Some(self.cpk_o), self.params)?;
 
             // TODO NG add OR
-            cpk_o_point.mul(
-                cs.namespace(|| format!("multiplication of shift to cpk_o")),
+            // left branch: shift
+            // - input cpk_o
+            let cpk_o = EdwardsPoint::witness(&mut *cs, Some(self.cpk_o), self.params)?;
+            // - input -cpk
+            let neg_cpk = EdwardsPoint::witness(&mut *cs, Some(self.cpk.negate()), self.params)?;
+            // - compute cpk' = cpk_o * shift
+            let cpk_prime = cpk_o.mul(
+                cs.namespace(|| "multiplication of shift to cpk_o"),
                 &shift,
                 self.params,
             )?;
-            pedersen_hash::pedersen_hash(
+            // - compute cpk' + (-cpk)
+            let left_branch = cpk_prime.add(
+                cs.namespace(|| "subtract cpk from cpk_prime"),
+                &neg_cpk,
+                self.params,
+            )?;
+
+            // right branch: hash
+            // - input preimage (see above)
+            // - input -digest
+            let neg_digest =
+                EdwardsPoint::witness(&mut *cs, Some(self.digest.negate()), self.params)?;
+            // - compute h' = H(preimage)
+            let h_prime = pedersen_hash::pedersen_hash(
                 &mut *cs,
                 pedersen_hash::Personalization::NoteCommitment,
                 &preimage,
                 self.params,
             )?;
+            // - compute h' + (-digest)
+            let right_branch = h_prime.add(
+                cs.namespace(|| "subtract digest from h_prime"),
+                &neg_digest,
+                self.params,
+            )?;
+
+            // enforce x-coordinate
+            cs.enforce(
+                || "or constraint",
+                |lc| lc + left_branch.get_x().get_variable(),
+                |lc| lc + right_branch.get_x().get_variable(),
+                |lc| lc + &bellman::LinearCombination::<E>::zero(),
+            );
+            // enforce y-coordinate
+            cs.enforce(
+                || "or constraint",
+                |lc| lc + left_branch.get_y().get_variable(),
+                |lc| lc + right_branch.get_y().get_variable(),
+                |lc| lc + &bellman::LinearCombination::<E>::zero(),
+            );
 
             Ok(())
         }
@@ -412,11 +454,20 @@ fn main() {
             Fr::from_repr(FrRepr(cpk_o_dusk.get_z().0)).unwrap(),
         );
 
+        use sapling_crypto::pedersen_hash;
+        let preimage_opt = vec![Some(true); PEDERSEN_PREIMAGE_BITS];
+        let preimage_bool = vec![true; PEDERSEN_PREIMAGE_BITS];
         let circuit = PedersenHashPreimageORShiftCircuit {
-            preimage: vec![Some(true); PEDERSEN_PREIMAGE_BITS],
+            preimage: preimage_opt,
             params: &params,
             shift: vec![Some(true); std::convert::TryInto::try_into(JUBJUB_SCALAR_BITS).unwrap()],
             cpk_o: cpk_o_sapling,
+            cpk: sapling_crypto::jubjub::edwards::Point::zero(), // TODO NG
+            digest: pedersen_hash::pedersen_hash(
+                pedersen_hash::Personalization::NoteCommitment,
+                preimage_bool,
+                &params,
+            ),
         };
 
         println!("creating proof");
