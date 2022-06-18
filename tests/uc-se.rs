@@ -3,16 +3,17 @@ mod tests {
     // to test correctness of new primitives implemented for UC-SE
     extern crate sonic_ucse;
 
+    use dusk_jubjub::{JubJubExtended, JubJubScalar, GENERATOR_EXTENDED};
+    use dusk_pki::{PublicKey as VerificationKey, SecretKey};
+    use jubjub_elgamal::{Cypher, PrivateKey, PublicKey};
+    use jubjub_schnorr::Signature;
     use lamport_sigs;
     use pairing::bls12_381::Fr;
     use pairing::bls12_381::G1Affine;
     use sonic_ucse::dlog::*;
     use sonic_ucse::protocol::*;
     use sonic_ucse::usig::*;
-    use starsig::{Signature, VerificationKey};
 
-    use dusk_plonk::jubjub::{JubJubExtended, JubJubScalar, GENERATOR_EXTENDED};
-    use jubjub_elgamal::{Cypher, PrivateKey, PublicKey};
     #[test]
     fn test_kupke() {
         // keygen
@@ -78,56 +79,56 @@ mod tests {
     #[test]
     fn test_usig() {
         // keygen
-        let usig = Starsig;
+        let usig = Schnorr;
         let (sk, pk): (SecretKey, VerificationKey) = usig.kgen();
 
         // sign
-        let message: &[u8] = b"dummy message";
+        let message: u64 = rand::random();
         let sigma: Signature = usig.sign(sk, message);
 
         // verify
-        assert!(usig.verify(pk, message, sigma).is_ok());
+        assert!(usig.verify(pk, message, sigma));
     }
-    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
     #[test]
     fn test_usig_update_proof() {
         // gen keypair
-        let usig = Starsig;
-        let (sk, pk): (SecretKey, VerificationKey) = usig.kgen();
+        let usig = Schnorr;
+        let (_sk, pk): (SecretKey, VerificationKey) = usig.kgen();
 
         // get update proof
         let (pk_up, up_sk, proof) = usig.upk(pk);
 
         // check that the update is correct
-        assert_eq!(pk_up, pk.add(up_sk * RISTRETTO_BASEPOINT_POINT));
+        assert_eq!(pk_up, pk.add(up_sk * GENERATOR_EXTENDED));
 
         // check that update proof verifies
-        let mut transcript_verifier = DLogProtocol::<Ristretto>::new(&[]);
+        let mut transcript_verifier = DLogProtocol::<JubJub>::new(&[]);
         assert!(vrfy_dlog(
             &mut transcript_verifier,
-            &(pk_up.point.decompress().unwrap() - pk.point.decompress().unwrap()),
-            &RISTRETTO_BASEPOINT_POINT,
+            &(pk_up.as_ref() - pk.as_ref()),
+            &GENERATOR_EXTENDED,
             proof
         )
         .is_ok());
     }
     #[test]
     fn test_usig_update() {
-        let usig = Starsig;
+        let usig = Schnorr;
         let (sk, pk): (SecretKey, VerificationKey) = usig.kgen();
-        let message: &[u8] = b"dummy message";
+
+        let message: u64 = rand::random();
         let sigma: Signature = usig.sign(sk, message);
 
         // update sk, pk
         let (pk_up, up_sk, _proof) = usig.upk(pk);
         let sk_up = usig.usk(sk, up_sk);
-        assert_eq!(pk_up, VerificationKey::from_secret(&(sk_up.scalar)));
+        assert_eq!(pk_up, VerificationKey::from(&sk_up));
 
         // update sig
         let sigma_up = usig.usig(message, sigma, up_sk);
 
         // check that updated sig verifies under updated keypair
-        assert!(usig.verify(pk_up, message, sigma_up).is_ok());
+        assert!(usig.verify(pk_up, message, sigma_up));
     }
 
     use ring::digest::SHA256;
@@ -152,16 +153,22 @@ mod tests {
     #[test]
     fn test_usig_pk_ot() {
         // keygen
-        let usig = Starsig;
+        let usig = Schnorr;
         let (sk, pk): (SecretKey, VerificationKey) = usig.kgen();
         let sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
         let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
 
         // sign
-        let message: Vec<u8> = pk_ot.to_bytes();
-        let sigma: Signature = usig.sign(sk, &message);
+        // pk_ot is way more than 8 bytes so we hash it
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        pk_ot.hash(&mut hasher);
+        let pk_ot_hash = hasher.finish(); // outputs a u64
+
+        let sigma: Signature = usig.sign(sk, pk_ot_hash);
 
         // verify
-        assert!(usig.verify(pk, &message, sigma).is_ok());
+        assert!(usig.verify(pk, pk_ot_hash, sigma));
     }
 }

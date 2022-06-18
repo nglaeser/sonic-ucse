@@ -13,8 +13,9 @@ use crate::srs::SRS;
 use crate::usig::*;
 use crate::util::multiexp;
 use crate::Statement;
+use dusk_pki::PublicKey;
+use jubjub_schnorr::Signature;
 use pairing::{CurveAffine, CurveProjective, Engine, Field};
-use starsig::{Signature, VerificationKey};
 
 // One of the primary functions of the `Batch` abstraction is handling
 // Kate commitment openings:
@@ -53,7 +54,7 @@ pub struct Batch<E: Engine> {
 
     // new (UC SE) proof elements
     c: Vec<jubjub_elgamal::Cypher>,
-    pk_l: Vec<VerificationKey>,
+    pk_l: Vec<PublicKey>,
     sigma: Vec<Signature>,
     pk_ot: Vec<lamport_sigs::PublicKey>,
     sigma_ot: Vec<Result<Vec<Vec<u8>>, &'static str>>,
@@ -115,7 +116,7 @@ impl<E: Engine> Batch<E> {
         self.value.add_assign(&r);
     }
 
-    pub fn add_pk(&mut self, pk: VerificationKey) {
+    pub fn add_pk(&mut self, pk: PublicKey) {
         self.pk_l.push(pk);
     }
 
@@ -145,15 +146,21 @@ impl<E: Engine> Batch<E> {
         // verify all the sigmas
         {
             use crate::util::to_be_bytes;
-            let usig = Starsig;
+            let usig = Schnorr;
             for ((pk, pk_ot), sigma) in self
                 .pk_l
                 .iter()
                 .zip(self.pk_ot.iter())
                 .zip(self.sigma.iter())
             {
-                let message_bytes: Vec<u8> = pk_ot.to_bytes();
-                if !usig.verify(*pk, &message_bytes, *sigma).is_ok() {
+                // let message_bytes: Vec<u8> = pk_ot.to_bytes();
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                pk_ot.hash(&mut hasher);
+                let pk_ot_hash = hasher.finish(); // outputs a u64
+
+                if !usig.verify(*pk, pk_ot_hash, *sigma) {
                     return false;
                 }
             }

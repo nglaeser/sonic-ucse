@@ -1,7 +1,7 @@
 use crate::dlog::*;
-use dusk_plonk::jubjub::{JubJubExtended, JubJubScalar};
+use dusk_jubjub::{JubJubExtended, JubJubScalar};
 use jubjub_elgamal::{PrivateKey, PublicKey};
-use rand::{CryptoRng, Rng};
+use rand_core::{CryptoRng, RngCore};
 use std::ops::Mul;
 
 pub trait KeyUpdate<T, R> {
@@ -9,7 +9,7 @@ pub trait KeyUpdate<T, R> {
 }
 impl<R> KeyUpdate<JubJubScalar, R> for PublicKey
 where
-    R: Rng + CryptoRng,
+    R: RngCore + CryptoRng,
 {
     fn upk(&mut self, rng: R) -> (SKUpdate<JubJubScalar>, DLogProof<JubJub>) {
         // because sk_up = sk * up_sk
@@ -46,7 +46,7 @@ pub struct SKUpdate<T> {
 impl SKUpdate<JubJubScalar> {
     pub fn random<R>(mut rng: R) -> Self
     where
-        R: Rng + CryptoRng,
+        R: RngCore + CryptoRng,
     {
         let up: JubJubScalar = JubJubScalar::random(&mut rng);
         SKUpdate { up }

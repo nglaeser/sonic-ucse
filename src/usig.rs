@@ -1,52 +1,29 @@
-use crate::dlog::Ristretto as RistrettoDLogGroup;
+use crate::dlog::JubJub as JubJubDLogGroup;
 use crate::dlog::{prove_dlog, DLogGroup, DLogProof, DLogProtocol};
-use crate::BigIntable;
-use curv::elliptic::{curves, curves::ECScalar, curves::Ristretto};
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-use curve25519_dalek::ristretto::RistrettoPoint;
-use curve25519_dalek::scalar::Scalar as DalekScalar;
-use merlin::Transcript;
-use rand::rngs::OsRng;
-use rand::{CryptoRng, RngCore};
-use starsig::TranscriptProtocol;
 use std::ops::{Add, Mul};
 
 // collection of algorithms that make up a digital signature
-pub struct Starsig;
-pub trait Sig<SK, VK, S, E> {
+pub struct Schnorr;
+pub trait Sig<SK, VK, S> {
     fn kgen(&self) -> (SK, VK);
-    fn sign(&self, _: SK, _: &[u8]) -> S;
-    fn verify(&self, _: VK, _: &[u8], _: S) -> Result<(), E>;
+    fn sign(&self, _: SK, _: u64) -> S;
+    fn verify(&self, _: VK, _: u64, _: S) -> bool;
 }
-use starsig::{Signature, StarsigError, VerificationKey};
+use dusk_jubjub::{BlsScalar, JubJubExtended, JubJubScalar, GENERATOR_EXTENDED};
+use dusk_pki::{PublicKey, SecretKey};
+use jubjub_schnorr::Signature;
 pub trait EasyAdd<T> {
     fn add(self, rhs: T) -> Self;
 }
-impl EasyAdd<RistrettoPoint> for VerificationKey {
-    fn add(self, rhs: RistrettoPoint) -> VerificationKey {
-        VerificationKey::from(self.point.decompress().unwrap() + rhs)
+impl EasyAdd<JubJubExtended> for PublicKey {
+    fn add(self, rhs: JubJubExtended) -> PublicKey {
+        PublicKey::from(*self.as_ref() + rhs)
     }
 }
-
-// starsig secret key
-#[derive(Copy, Clone)]
-pub struct SecretKey {
-    // from group of prime order l = 2^252 + 27742317777372353535851937790883648493
-    // (ristretto 255)
-    pub scalar: DalekScalar,
-}
-impl SecretKey {
-    pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
-        let scalar = DalekScalar::random(rng);
-        SecretKey { scalar }
-    }
-}
-impl Add<Update<DalekScalar>> for SecretKey {
+impl Add<Update<JubJubScalar>> for SecretKey {
     type Output = SecretKey;
-    fn add(self, rhs: Update<DalekScalar>) -> SecretKey {
-        SecretKey {
-            scalar: self.scalar + rhs.scalar,
-        }
+    fn add(self, rhs: Update<JubJubScalar>) -> SecretKey {
+        SecretKey::from(*self.as_ref() + rhs.scalar)
     }
 }
 
@@ -57,39 +34,36 @@ where
 {
     fn update(self, _: Update<T>) -> Self;
 }
-// how to update starsig secret and public keys
-impl Updatable<DalekScalar> for SecretKey {
-    fn update(self, up: Update<DalekScalar>) -> Self {
-        // for starsig sk, `op` is +
+// how to update secret and public keys
+impl Updatable<JubJubScalar> for SecretKey {
+    fn update(self, up: Update<JubJubScalar>) -> Self {
         // sk_up := sk + up_sk
         self + up
     }
 }
-impl Updatable<DalekScalar> for VerificationKey {
-    fn update(self, up: Update<DalekScalar>) -> Self {
-        // for starsig, `mu(op) up` is `+ up * RISTRETTO_BASEPOINT_POINT`
-        // pk_up := (sk * RISTRETTO_BASEPOINT_POINT) + (up_sk * RISTRETTO_BASEPOINT_POINT)
-        // correctness:
-        // pk_up  = (sk + up_sk) * RISTRETTO_BASEPOINT_POINT
-        //        = sk_up * RISTRETTO_BASEPOINT_POINT
-        let pk_up = self.add(up * RISTRETTO_BASEPOINT_POINT);
+impl Updatable<JubJubScalar> for PublicKey {
+    fn update(self, up: Update<JubJubScalar>) -> Self {
+        // pk_up := pk + (up_sk * G)
+        //        = (sk * G) + (up_sk * G)
+        //        = (sk + up_sk) * G
+        //        = sk_up * G
+        let pk_up = self.add(up * GENERATOR_EXTENDED);
         pk_up
     }
 }
 
 // starsig digital signature algorithms
-impl Sig<SecretKey, VerificationKey, Signature, StarsigError> for Starsig {
-    fn kgen(&self) -> (SecretKey, VerificationKey) {
-        let mut csprng = OsRng {};
-        let sk = SecretKey::random(&mut csprng);
-        let pk = VerificationKey::from_secret(&sk.scalar);
+impl Sig<SecretKey, PublicKey, Signature> for Schnorr {
+    fn kgen(&self) -> (SecretKey, PublicKey) {
+        let sk = SecretKey::random(&mut rand::thread_rng());
+        let pk = PublicKey::from(&sk);
         (sk, pk)
     }
-    fn sign(&self, sk: SecretKey, m: &[u8]) -> Signature {
-        Signature::sign_message(b"signature", m, sk.scalar)
+    fn sign(&self, sk: SecretKey, m: u64) -> Signature {
+        Signature::new(&sk, &mut rand::thread_rng(), BlsScalar::from(m))
     }
-    fn verify(&self, vk: VerificationKey, m: &[u8], sigma: Signature) -> Result<(), StarsigError> {
-        sigma.verify_message(b"signature", m, vk)
+    fn verify(&self, pk: PublicKey, m: u64, sigma: Signature) -> bool {
+        sigma.verify(&pk, BlsScalar::from(m))
     }
 }
 
@@ -101,25 +75,25 @@ where
 {
     pub scalar: T,
 }
-impl Mul<RistrettoPoint> for Update<DalekScalar> {
-    type Output = RistrettoPoint;
-    fn mul(self, point: RistrettoPoint) -> RistrettoPoint {
-        self.scalar * point
+impl Mul<JubJubExtended> for Update<JubJubScalar> {
+    type Output = JubJubExtended;
+    fn mul(self, point: JubJubExtended) -> JubJubExtended {
+        point * self.scalar
     }
 }
-impl Mul<Update<DalekScalar>> for DalekScalar {
-    type Output = DalekScalar;
-    fn mul(self, up: Update<DalekScalar>) -> DalekScalar {
+impl Mul<Update<JubJubScalar>> for JubJubScalar {
+    type Output = JubJubScalar;
+    fn mul(self, up: Update<JubJubScalar>) -> JubJubScalar {
         self * up.scalar
     }
 }
-impl BigIntable for Update<DalekScalar> {
-    fn to_big_int(&self) -> curv::BigInt {
-        let rs: curves::Scalar<Ristretto> =
-            curves::Scalar::from_raw(ECScalar::from_underlying(self.scalar));
-        rs.to_bigint()
-    }
-}
+// impl BigIntable for Update<DalekScalar> {
+//     fn to_big_int(&self) -> curv::BigInt {
+//         let rs: curves::Scalar<Ristretto> =
+//             curves::Scalar::from_raw(ECScalar::from_underlying(self.scalar));
+//         rs.to_bigint()
+//     }
+// }
 
 // additional algorithms for *updatable* signature
 pub trait UpdatableSig<G, SK, VK, S, T: Copy + Clone>
@@ -132,52 +106,49 @@ where
     // pk_up := pk mu(`op`) up_sk
     fn upk(&self, _: VK) -> (VK, Update<T>, DLogProof<G>);
     fn usk(&self, _: SK, _: Update<T>) -> SK;
-    fn usig(&self, _: &[u8], _: S, _: Update<T>) -> S;
+    fn usig(&self, _: u64, _: S, _: Update<T>) -> S;
 }
-impl UpdatableSig<RistrettoDLogGroup, SecretKey, VerificationKey, Signature, DalekScalar>
-    for Starsig
-{
-    fn upk(
-        &self,
-        pk: VerificationKey,
-    ) -> (
-        VerificationKey,
-        Update<DalekScalar>,
-        DLogProof<RistrettoDLogGroup>,
-    ) {
-        let mut csprng = OsRng {};
-        let r = DalekScalar::random(&mut csprng);
+impl UpdatableSig<JubJubDLogGroup, SecretKey, PublicKey, Signature, JubJubScalar> for Schnorr {
+    fn upk(&self, pk: PublicKey) -> (PublicKey, Update<JubJubScalar>, DLogProof<JubJubDLogGroup>) {
+        let r = JubJubScalar::random(&mut rand::thread_rng());
         let up = Update { scalar: r };
 
-        let pk_up: VerificationKey = pk.update(up);
+        let pk_up: PublicKey = pk.update(up);
 
-        // prove knowledge of up_sk s.t. pk_up = pk + up_sk * RISTRETTO_BASEPOINT_POINT
+        // prove knowledge of up_sk s.t. pk_up = pk + up_sk * G
         // written as a dlog statement:
-        // knowledge of dlog of pk_up - pk wrt RISTRETTO_BASEPOINT_POINT
-        // since pk_up - pk = up_sk * RISTRETTO_BASEPOINT_POINT
-        let mut transcript = DLogProtocol::<RistrettoDLogGroup>::new(&[]);
+        //      knowledge of dlog of (pk_up - pk) wrt G
+        //      since pk_up - pk = up_sk * G
+        let mut transcript = DLogProtocol::<JubJubDLogGroup>::new(&[]);
         let proof = prove_dlog(
             &mut transcript,
-            &(pk_up.point.decompress().unwrap() - pk.point.decompress().unwrap()),
-            &RISTRETTO_BASEPOINT_POINT,
+            &(pk_up.as_ref() - pk.as_ref()),
+            &GENERATOR_EXTENDED,
             &up.scalar,
         );
 
         (pk_up, up, proof) // TODO should the proof be verified anywhere?
     }
-    fn usk(&self, sk: SecretKey, up: Update<DalekScalar>) -> SecretKey {
+    fn usk(&self, sk: SecretKey, up: Update<JubJubScalar>) -> SecretKey {
         sk.update(up)
     }
-    fn usig(&self, m: &[u8], sigma: Signature, up: Update<DalekScalar>) -> Signature {
-        // sigma_up := sigma + c * up_sk
-        //           = (r + c * sk) + c * up_sk = r + c * sk_up
-        let mut transcript = Transcript::new(b"Starsig.sign_message");
-        transcript.append_message(b"signature", m);
-        let c = {
-            transcript.starsig_domain_sep();
-            transcript.append_point(b"R", &sigma.R);
-            transcript.challenge_scalar(b"c")
-        };
-        sigma + c * up
+    fn usig(&self, m: u64, sigma: Signature, up: Update<JubJubScalar>) -> Signature {
+        // sigma_up.u := sigma - (c * up_sk)
+        //             = (r - c * sk) - (c * up_sk) = r - c * (sk + up_sk)
+        //             = r - (c * sk_up)
+        let c = challenge_hash(sigma.R, BlsScalar::from(m));
+        Signature {
+            u: sigma.u - (c * up),
+            R: sigma.R,
+        }
     }
+}
+/// copy of https://github.com/nglaeser/jubjub-schnorr/blob/main/src/key_variants/single_key.rs#L19-L24
+/// Method to create a challenge hash for signature scheme
+use dusk_poseidon::sponge;
+#[allow(non_snake_case)]
+fn challenge_hash(R: JubJubExtended, message: BlsScalar) -> JubJubScalar {
+    let R_scalar = R.to_hash_inputs();
+
+    sponge::truncated::hash(&[R_scalar[0], R_scalar[1], message])
 }

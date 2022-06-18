@@ -4,11 +4,12 @@ use crate::synthesis::{Backend, SynthesisDriver};
 use crate::usig::*;
 use crate::util::*;
 use crate::{Circuit, Coeff, Scalarable, Statement, SynthesisError, Variable};
+use dusk_pki::{PublicKey, SecretKey};
+use jubjub_schnorr::Signature;
 use lamport_sigs;
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field};
 use ring::digest::SHA256;
-use starsig::{Signature, VerificationKey};
 use std::marker::PhantomData;
 // use ring::digest::{Algorithm, SHA512};
 // static DIGEST_256: &Algorithm = &SHA256; // TODO NG decide which SHA to use
@@ -82,7 +83,7 @@ pub struct Proof<E: Engine> {
     z_opening: E::G1Affine,
     zy_opening: E::G1Affine,
     c: jubjub_elgamal::Cypher,
-    pk_l: VerificationKey,
+    pk_l: PublicKey,
     sigma: Signature,
     pk_ot: lamport_sigs::PublicKey,
     sigma_ot: Result<Vec<Vec<u8>>, &'static str>,
@@ -971,17 +972,23 @@ pub fn create_proof<E: Engine, C: Statement + Scalarable + Circuit<E>, S: Synthe
     };
 
     // US keys
-    let usig = Starsig;
-    let (sk_l, pk_l): (SecretKey, VerificationKey) = usig.kgen();
+    let usig = Schnorr;
+    let (sk_l, pk_l): (SecretKey, PublicKey) = usig.kgen();
     let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
     let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
 
     // \Sigma.Sign(sk_l, pk_OT)
-    let pk_ot_message: Vec<u8> = pk_ot.to_bytes();
-    let sigma: Signature = usig.sign(sk_l, &pk_ot_message);
+    // let pk_ot_message: Vec<u8> = pk_ot.to_bytes();
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    pk_ot.hash(&mut hasher);
+    let pk_ot_hash = hasher.finish(); // outputs a u64
+
+    let sigma: Signature = usig.sign(sk_l, pk_ot_hash);
 
     // encrypt the witness (circuit C)
-    use dusk_plonk::jubjub::{JubJubScalar, GENERATOR_EXTENDED};
+    use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
     let message = GENERATOR_EXTENDED * circuit.to_scalar();
     // let message = curv::BigInt::from(0);
     let rand = JubJubScalar::random(&mut rand::thread_rng());
@@ -1323,8 +1330,8 @@ fn my_fun_circuit_test() {
         }
     }
     impl Scalarable for MyCircuit {
-        fn to_scalar(&self) -> dusk_plonk::jubjub::JubJubScalar {
-            dusk_plonk::jubjub::JubJubScalar::zero()
+        fn to_scalar(&self) -> dusk_jubjub::JubJubScalar {
+            dusk_jubjub::JubJubScalar::zero()
         }
     }
 
