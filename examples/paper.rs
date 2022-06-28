@@ -166,7 +166,7 @@ impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircui
     }
 }
 impl<C: Scalarable> Scalarable for AdaptorCircuit<C> {
-    fn to_scalar(&self) -> dusk_plonk::jubjub::JubJubScalar {
+    fn to_scalar(&self) -> dusk_jubjub::JubJubScalar {
         self.0.to_scalar()
     }
 }
@@ -177,7 +177,7 @@ impl<C: Statement> Statement for AdaptorCircuit<C> {
 }
 
 fn main() {
-    use dusk_plonk::jubjub::JubJubScalar;
+    use dusk_jubjub::JubJubScalar;
     use pairing::bls12_381::{Bls12, Fr, FrRepr};
     use std::time::Instant;
 
@@ -435,15 +435,13 @@ fn main() {
 
         const PEDERSEN_PREIMAGE_BITS: usize = 384;
         const JUBJUB_SCALAR_BITS: u32 = Fr::NUM_BITS;
-        let _DALEK_SCALAR_BITS: usize =
-            curve25519_dalek::scalar::Scalar::one().as_bytes().len() * 8;
 
         let params = sapling_crypto::jubjub::JubjubBls12::new();
 
         // TODO NG: also input cpk into the circuit (circuit will check for some (scalar) witness w := shift that cpk_o * shift = cpk (remember ECs are additive groups))
 
         // set cpk_o to the generator of the prime-order subgroup
-        use dusk_plonk::jubjub::{JubJubExtended, GENERATOR_EXTENDED};
+        use dusk_jubjub::{JubJubExtended, GENERATOR_EXTENDED};
         let cpk_o_dusk: JubJubExtended = GENERATOR_EXTENDED;
         let cpk_o_sapling: Point<_, PrimeOrder> = sapling_crypto::jubjub::edwards::Point::new(
             // convert each coordiniate from BlsScalar to (Bls12::)Fr

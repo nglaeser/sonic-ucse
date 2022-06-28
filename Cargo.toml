@@ -12,24 +12,23 @@ version = "0.14"
 features = ["u128-support"]
 
 [dependencies]
-merlin = "2"
-rand = "0.7"
+merlin = "3"
+rand = "0.8.5"
+rand_core = "0.6"
 bellman = "0.1.0"
 lamport_sigs = "0.7.0"
 ring = "0.16.15"
 curv-kzen = "0.9.0"
-curve25519-dalek = "3.2.1"
 byteorder = "1.4.3"
-dusk-plonk = "0.3.5"
+dusk-jubjub = "0.10"
 dusk-bls12_381 = "0.10.0"
+dusk-pki = "0.8.0"
+dusk-poseidon = "0.22.0"
+dusk-bytes = "0.1.5"
 
 [dependencies.sapling-crypto]
 git = "https://github.com/nglaeser/sapling-crypto"
 rev = "40d7594c48b6480f717ef714b4d439a36516a54b"
-
-[dependencies.elgamal]
-git = "https://github.com/ZenGo-X/rust-elgamal"
-rev = "3d6ef02da517ad1b8ec72a6f6fd7dcccab296cd3"
 
 [dependencies.starsig]
 git = "https://github.com/nglaeser/starsig"
@@ -37,3 +36,11 @@ git = "https://github.com/nglaeser/starsig"
 [dependencies.jubjub-elgamal]
 package = "elgamal"
 git = "https://github.com/nglaeser/jubjub-elgamal"
+
+[dependencies.jubjub-schnorr]
+package = "dusk-schnorr"
+git = "https://github.com/nglaeser/jubjub-schnorr"
+
+[dependencies.curve25519-dalek]
+git = "https://github.com/nglaeser/curve25519-dalek"
+branch = "release/3.2"

@@ -2,7 +2,7 @@
 mod tests {
     extern crate sonic_ucse;
 
-    use dusk_plonk::jubjub::{JubJubScalar, GENERATOR_EXTENDED};
+    use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
     use sonic_ucse::dlog::*;
     #[test]
     fn test_dlog_proof_jubjub() {

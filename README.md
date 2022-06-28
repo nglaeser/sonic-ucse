@@ -1,8 +1,8 @@
 # Sonic UC-SE
 
 This crate is a UC-secure and simulation extractable (SE) version of [Sonic](https://github.com/ebfull/sonic), an _updatable_ zk-SNARK protocol. We do this by using a generic transformation that turns any sound NIZK into a _simulation extractable_ NIZK -- in a UC-secure way. The transformation changes the NIZK's language from { (y,x) | y = H(x) } to { ((y,h), (x,r)) | y = H(x) OR h = g^r } and the proof consists of:
-- an _updatable signature_ (based on a [fork of starsig](https://github.com/nglaeser/starsig)) on a one-time signature public key, 
-- an _updatable encryption_ (based on [rust-elgamal](https://github.com/ZenGo-X/rust-elgamal)) of the base scheme's witness,
+- an _updatable signature_ ([Schnorr over Jubjub](https://github.com/nglaeser/jubjub-schnorr)) on a one-time signature public key, 
+- an _updatable encryption_ ([ElGamal over Jubjub](https://github.com/nglaeser/jubjub-elgamal)) of the base scheme's witness,
 - a NIZK for the new language using the base protocol (Sonic) and the base statement/witness pair (i.e., using the left branch of the OR),
 - a one-time signature ([lamport-sigs](https://lib.rs/crates/lamport_sigs)) on the above NIZK, the base statement y, and the above updatable signature, updatable ciphertext, and updatable encryption public key, using the secret key corresponding to the above one-time public key, and
 - the public keys of the updatable and one-time signature schemes

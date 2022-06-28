@@ -1,6 +1,7 @@
-use dusk_plonk::jubjub::{JubJubAffine, JubJubExtended, JubJubScalar};
+use dusk_bytes::Serializable;
+use dusk_jubjub::{JubJubAffine, JubJubExtended, JubJubScalar};
 use merlin::{Transcript, TranscriptRng, TranscriptRngBuilder};
-use rand::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, RngCore};
 use std::marker::PhantomData;
 
 pub struct DLogProtocol<T: DLogGroup>
@@ -29,7 +30,7 @@ where
         self.transcript
             .append_message(label, &T::point_to_bytes(point));
     }
-    fn append_scalar(&mut self, label: &'static [u8], scalar: &T::S) {
+    fn _append_scalar(&mut self, label: &'static [u8], scalar: &T::S) {
         self.transcript
             .append_message(label, &T::scalar_to_bytes(scalar));
     }
