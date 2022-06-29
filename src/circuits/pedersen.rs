@@ -160,6 +160,11 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
             &neg_cpk,
             self.params,
         )?;
+        // print!(
+        //     "left branch: {}, {}",
+        //     left_branch.get_x().get_value().unwrap(),
+        //     left_branch.get_y().get_value().unwrap()
+        // );
 
         // right branch: hash
         // - input preimage (see above)
@@ -178,8 +183,13 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
             &neg_digest,
             self.params,
         )?;
+        // print!(
+        //     "right branch: {}, {}",
+        //     right_branch.get_x().get_value().unwrap(),
+        //     right_branch.get_y().get_value().unwrap()
+        // );
 
-        // enforce = 0
+        // enforce = 0 (aka (0,1))
         // - x-coordinate
         cs.enforce(
             || "or constraint",
@@ -187,13 +197,13 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
             |lc| lc + right_branch.get_x().get_variable(),
             |lc| lc + &bellman::LinearCombination::<E>::zero(),
         );
-        // - y-coordinate
-        cs.enforce(
-            || "or constraint",
-            |lc| lc + left_branch.get_y().get_variable(),
-            |lc| lc + right_branch.get_y().get_variable(),
-            |lc| lc + &bellman::LinearCombination::<E>::zero(),
-        );
+        // - y-coordinate // will be 1, not 0
+        // cs.enforce(
+        //     || "or constraint",
+        //     |lc| lc + left_branch.get_y().get_variable(),
+        //     |lc| lc + right_branch.get_y().get_variable(),
+        //     |lc| lc + &bellman::LinearCombination::<E>::zero(),
+        // );
 
         Ok(())
     }

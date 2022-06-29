@@ -160,6 +160,7 @@ impl<E: Engine> Batch<E> {
                 let pk_ot_hash = hasher.finish(); // outputs a u64
 
                 if !usig.verify(*pk_l, pk_ot_hash, *sigma) {
+                    print!("batch.rs:163:: usig verification failed");
                     return false;
                 }
             }
@@ -178,6 +179,7 @@ impl<E: Engine> Batch<E> {
                     Err(_) => false,
                 };
                 if !sigma_ot_valid {
+                    print!("batch.rs:182:: ot_sig verification failed");
                     return false;
                 }
             }
