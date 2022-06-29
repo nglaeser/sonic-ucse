@@ -9,6 +9,24 @@ use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, PrimeFieldRepr};
 use std::io;
 
+use dusk_jubjub::JubJubExtended;
+use pairing::bls12_381::{Bls12, Fr, FrRepr};
+use sapling_crypto::jubjub::edwards::Point;
+use sapling_crypto::jubjub::{PrimeOrder, Unknown};
+pub fn dusk_to_sapling(dusk_jubjub_point: JubJubExtended) -> Point<Bls12, PrimeOrder> {
+    Point::new(
+        // convert each coordiniate from BlsScalar to (Bls12::)Fr
+        Fr::from_repr(FrRepr(dusk_jubjub_point.get_x().0)).unwrap(),
+        Fr::from_repr(FrRepr(dusk_jubjub_point.get_y().0)).unwrap(),
+        // T = T1 * T2 = XY/Z
+        Fr::from_repr(FrRepr(
+            (dusk_jubjub_point.get_t1() * dusk_jubjub_point.get_t2()).0,
+        ))
+        .unwrap(),
+        Fr::from_repr(FrRepr(dusk_jubjub_point.get_z().0)).unwrap(),
+    )
+}
+
 pub fn to_be_bytes<A: CurveAffine, F: pairing::PrimeField>(
     pi: &SonicProof<A, F>,
     x: &dyn Statement,

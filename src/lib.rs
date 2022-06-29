@@ -2,6 +2,7 @@ use pairing::{Engine, Field};
 use std::ops::{Add, Neg, Sub};
 
 pub mod batch;
+pub mod circuits;
 pub mod dlog;
 pub mod kupke;
 pub mod protocol;

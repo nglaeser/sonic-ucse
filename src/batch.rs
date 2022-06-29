@@ -136,7 +136,6 @@ impl<E: Engine> Batch<E> {
         self.c.push(ctext);
     }
 
-    // TODO NG use generic type instead of SonicProof
     pub fn add_underlying_proof(&mut self, proof: Proof<E>) {
         self.underlying_proof.push(proof);
     }
@@ -147,7 +146,7 @@ impl<E: Engine> Batch<E> {
         {
             use crate::util::to_be_bytes;
             let usig = Schnorr;
-            for ((pk, pk_ot), sigma) in self
+            for ((pk_l, pk_ot), sigma) in self
                 .pk_l
                 .iter()
                 .zip(self.pk_ot.iter())
@@ -160,11 +159,11 @@ impl<E: Engine> Batch<E> {
                 pk_ot.hash(&mut hasher);
                 let pk_ot_hash = hasher.finish(); // outputs a u64
 
-                if !usig.verify(*pk, pk_ot_hash, *sigma) {
+                if !usig.verify(*pk_l, pk_ot_hash, *sigma) {
                     return false;
                 }
             }
-            for (((((pk, underlying_proof), c), pk_l), sigma), sigma_ot) in self
+            for (((((pk_ot, underlying_proof), c), pk_l), sigma), sigma_ot) in self
                 .pk_ot
                 .iter()
                 .zip(self.underlying_proof.iter())
@@ -173,9 +172,9 @@ impl<E: Engine> Batch<E> {
                 .zip(self.sigma.iter())
                 .zip(self.sigma_ot.iter())
             {
-                let message: &[u8] = &to_be_bytes(underlying_proof, x, c, pk_l, *sigma);
+                let message: Vec<u8> = to_be_bytes(underlying_proof, x, c, pk_l, *sigma);
                 let sigma_ot_valid = match &sigma_ot {
-                    Ok(sig) => pk.verify_signature(sig, &message[..]),
+                    Ok(sig) => pk_ot.verify_signature(sig, &message[..]),
                     Err(_) => false,
                 };
                 if !sigma_ot_valid {

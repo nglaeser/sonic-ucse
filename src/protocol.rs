@@ -11,8 +11,6 @@ use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field};
 use ring::digest::SHA256;
 use std::marker::PhantomData;
-// use ring::digest::{Algorithm, SHA512};
-// static DIGEST_256: &Algorithm = &SHA256; // TODO NG decide which SHA to use
 
 #[derive(Clone)]
 pub struct SxyAdvice<E: Engine> {
@@ -388,7 +386,7 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         // return 1 if all checks pass, else return 0
 
         // because this is the last line, the fn returns the output of this call
-        self.batch.check_all(&self.circuit) // batch.rs:97
+        self.batch.check_all(&self.circuit) // batch.rs:143
     }
 }
 
