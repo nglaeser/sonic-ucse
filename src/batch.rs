@@ -33,7 +33,8 @@ use pairing::{CurveAffine, CurveProjective, Engine, Field};
 //
 // ... and checking that the result is the identity in the target group.
 // This is checking pcV (?)
-type Proof<E> = SonicProof<<E as Engine>::G1Affine, <E as Engine>::Fr>;
+type UnderlyingProof<E> = SonicProof<E>;
+// type Proof<E> = SonicProof<<E as Engine>::G1Affine, <E as Engine>::Fr>;
 pub struct Batch<E: Engine> {
     alpha_x: Vec<(E::G1Affine, E::Fr)>,
     alpha_x_precomp: <E::G2Affine as CurveAffine>::Prepared,
@@ -58,7 +59,8 @@ pub struct Batch<E: Engine> {
     sigma: Vec<Signature>,
     pk_ot: Vec<lamport_sigs::PublicKey>,
     sigma_ot: Vec<Result<Vec<Vec<u8>>, &'static str>>,
-    underlying_proof: Vec<Proof<E>>,
+    // underlying_proof: Vec<Proof<E>>,
+    underlying_proof: Vec<UnderlyingProof<E>>,
 }
 
 impl<E: Engine> Batch<E> {
@@ -136,61 +138,18 @@ impl<E: Engine> Batch<E> {
         self.c.push(ctext);
     }
 
-    pub fn add_underlying_proof(&mut self, proof: Proof<E>) {
+    pub fn add_underlying_proof(&mut self, proof: UnderlyingProof<E>) {
         self.underlying_proof.push(proof);
     }
 
-    pub fn check_all(mut self, x: &dyn Statement) -> bool {
-        //// check sigma and sigma_ot first, before the sonic proof
-        // verify all the sigmas
-        {
-            use crate::util::to_be_bytes;
-            let usig = Schnorr;
-            for ((pk_l, pk_ot), sigma) in self
-                .pk_l
-                .iter()
-                .zip(self.pk_ot.iter())
-                .zip(self.sigma.iter())
-            {
-                // let message_bytes: Vec<u8> = pk_ot.to_bytes();
-                use std::collections::hash_map::DefaultHasher;
-                use std::hash::{Hash, Hasher};
-                let mut hasher = DefaultHasher::new();
-                pk_ot.hash(&mut hasher);
-                let pk_ot_hash = hasher.finish(); // outputs a u64
+    pub fn check_all_underlying(mut self) -> bool {
+        // this is checking zkV3 in aggregate
+        // (see discussion at the top of this file)
 
-                if !usig.verify(*pk_l, pk_ot_hash, *sigma) {
-                    print!("batch.rs:163:: usig verification failed");
-                    return false;
-                }
-            }
-            for (((((pk_ot, underlying_proof), c), pk_l), sigma), sigma_ot) in self
-                .pk_ot
-                .iter()
-                .zip(self.underlying_proof.iter())
-                .zip(self.c.iter())
-                .zip(self.pk_l.iter())
-                .zip(self.sigma.iter())
-                .zip(self.sigma_ot.iter())
-            {
-                let message: Vec<u8> = to_be_bytes(underlying_proof, x, c, pk_l, *sigma);
-                let sigma_ot_valid = match &sigma_ot {
-                    Ok(sig) => pk_ot.verify_signature(sig, &message[..]),
-                    Err(_) => false,
-                };
-                if !sigma_ot_valid {
-                    print!("batch.rs:182:: ot_sig verification failed");
-                    return false;
-                }
-            }
-        }
-
-        //// check the sonic proof
         // type(alpha): Vec<(E::G1Affine, E::Fr)> (line 55)
         self.alpha.push((self.g, self.value));
         // alpha = [(g, 0)]
 
-        //
         let alpha_x = multiexp(
             self.alpha_x.iter().map(|x| &x.0),
             self.alpha_x.iter().map(|x| &x.1),
@@ -228,5 +187,54 @@ impl<E: Engine> Batch<E> {
         ]))
         .unwrap()
             == E::Fqk::one()
+    }
+
+    pub fn check_all(self, x: &dyn Statement) -> bool {
+        // \Sigma.Verify(pk_l, pk_ot, sigma)
+        use crate::util::to_be_bytes;
+        let usig = Schnorr;
+        for ((pk_l, pk_ot), sigma) in self
+            .pk_l
+            .iter()
+            .zip(self.pk_ot.iter())
+            .zip(self.sigma.iter())
+        {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            pk_ot.hash(&mut hasher);
+            let pk_ot_hash: u64 = hasher.finish();
+
+            if !usig.verify(*pk_l, pk_ot_hash, *sigma) {
+                print!("batch.rs:163:: usig verification failed");
+                return false;
+            }
+        }
+
+        // \Sigma_OT.Verify(pk_ot, pi || x || c || pk_l || sigma, sigma_ot)
+        for (((((pk_ot, underlying_proof), c), pk_l), sigma), sigma_ot) in self
+            .pk_ot
+            .iter()
+            .zip(self.underlying_proof.iter())
+            .zip(self.c.iter())
+            .zip(self.pk_l.iter())
+            .zip(self.sigma.iter())
+            .zip(self.sigma_ot.iter())
+        {
+            let message: Vec<u8> =
+                to_be_bytes(underlying_proof, x.get_statement_bytes(), c, pk_l, *sigma);
+            let sigma_ot_valid = match &sigma_ot {
+                Ok(sig) => pk_ot.verify_signature(sig, &message[..]),
+                Err(_) => false,
+            };
+            if !sigma_ot_valid {
+                print!("batch.rs:182:: ot_sig verification failed");
+                return false;
+            }
+        }
+
+        // \Pi.V(srs, x, c, pi)
+        // i.e., check the underlying (sonic) proofs
+        self.check_all_underlying()
     }
 }

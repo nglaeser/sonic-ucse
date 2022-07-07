@@ -1,5 +1,4 @@
 use crate::protocol::SonicProof;
-use crate::Statement;
 use crate::SynthesisError;
 use dusk_bytes::Serializable;
 use dusk_pki::PublicKey;
@@ -27,16 +26,17 @@ pub fn dusk_to_sapling(dusk_jubjub_point: JubJubExtended) -> Point<Bls12, PrimeO
     )
 }
 
-pub fn to_be_bytes<A: CurveAffine, F: pairing::PrimeField>(
-    pi: &SonicProof<A, F>,
-    x: &dyn Statement,
+// pub fn to_be_bytes<A: CurveAffine, F: pairing::PrimeField>(
+pub fn to_be_bytes<E: Engine>(
+    pi: &SonicProof<E>,
+    x_bytes: &[u8],
     c: &ElGamalCtext,
     pk_l: &PublicKey,
     sigma: Signature,
 ) -> Vec<u8> {
     [
         &pi.to_bytes(),    // sonic_bytes,
-        x.get_statement(), // x_bytes,
+        x_bytes,           // x_bytes,
         &c.to_bytes(),     // &c_bytes,
         &pk_l.to_bytes(),  // &pk_l_bytes,
         &sigma.to_bytes(), // &sigma_bytes
@@ -417,22 +417,24 @@ impl<T> OptionExt<T> for Option<T> {
     }
 }
 
-pub fn bool_vec_to_bytes(vec: &Vec<Option<bool>>) -> [u8; 64] {
+pub fn opt_vec_to_bytes(vec: &Vec<Option<bool>>) -> [u8; 64] {
+    let out: Vec<bool> = vec.iter().map(|x| x.unwrap()).collect::<Vec<bool>>();
+    bool_vec_to_bytes(&out)
+}
+
+pub fn bool_vec_to_bytes(vec: &Vec<bool>) -> [u8; 64] {
     // unwrap each Option<bool> into a bit
     // re-interpret the bit vector as a byte vector
     let len = vec.len();
     assert!(len <= 512);
     let mut out = [0; 64];
 
-    let mut slice = vec![Some(false); 8];
+    let mut slice = vec![false; 8];
     for i in 0..(len / 8) {
         let start = i * 8;
         let end = (i + 1) * 8;
         slice.copy_from_slice(&vec[start..end]);
-        let tmp: u8 = vec
-            .iter()
-            .rev()
-            .fold(0, |acc, &b| (acc << 1) + b.unwrap() as u8);
+        let tmp: u8 = vec.iter().rev().fold(0, |acc, &b| (acc << 1) + b as u8);
         out[i] = tmp;
     }
     out

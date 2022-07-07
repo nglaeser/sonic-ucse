@@ -10,6 +10,7 @@ mod tests {
     #[test]
     fn test_or_proof_pedersen() {
         use sapling_crypto::pedersen_hash;
+        use sonic_ucse::circuits::adaptor::AdaptorCircuit;
         use sonic_ucse::circuits::pedersen::PedersenHashPreimageORShiftCircuit;
         use sonic_ucse::util::dusk_to_sapling;
         const PEDERSEN_PREIMAGE_BITS: usize = 384;
@@ -22,7 +23,6 @@ mod tests {
 
         // set up proof statement variables
         let params = sapling_crypto::jubjub::JubjubBls12::new();
-        // x' := (digest, c, cpk, cpk_0) // TODO add c (AND)
         let preimage_opt = vec![Some(true); PEDERSEN_PREIMAGE_BITS];
         let preimage_bool = vec![true; PEDERSEN_PREIMAGE_BITS];
         let digest = pedersen_hash::pedersen_hash(
@@ -30,20 +30,24 @@ mod tests {
             preimage_bool,
             &params,
         );
+        // let preimage_bytes: Vec<u8> = bool_vec_to_bytes(&preimage_opt);
         let circuit = PedersenHashPreimageORShiftCircuit {
-            preimage: preimage_opt,
             params: &params,
-            // garbage shift (unknown to honest prover)
-            shift: vec![Some(true); std::convert::TryInto::try_into(JUBJUB_SCALAR_BITS).unwrap()],
-            cpk_o: dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED),
-            cpk: dusk_to_sapling(*srs.cpk.as_ref()),
+            // x' = (x,c, cpk, cpk_o)
             digest: digest,
+            // TODO NG add c (AND statement)
+            cpk: dusk_to_sapling(*srs.cpk.as_ref()),
+            cpk_o: dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED),
+            // w' = (w, omega, shift)
+            preimage: preimage_opt,
+            // TODO NG add omega
+            shift: vec![Some(true); std::convert::TryInto::try_into(JUBJUB_SCALAR_BITS).unwrap()], // garbage shift (shift is unknown to honest prover)
         };
-
         print!("create proof");
         type ChosenBackend = Permutation3;
         let proof = create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
             .unwrap();
+        // let proof = create_proof::<Bls12>(&srs, digest, preimage_opt).unwrap();
 
         print!("verify proof");
         let mut verifier =

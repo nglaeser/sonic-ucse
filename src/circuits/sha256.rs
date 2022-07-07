@@ -1,5 +1,5 @@
-use crate::util::bool_vec_to_bytes;
-use crate::{Scalarable, Statement};
+use crate::util::opt_vec_to_bytes;
+use crate::{Statement, WitnessScalar};
 use dusk_jubjub::JubJubScalar;
 use pairing::Engine;
 
@@ -8,15 +8,19 @@ struct SHA256PreimageCircuit {
     preimage: Vec<Option<bool>>,
 }
 
+// impl Statement<Vec<Option<bool>>> for SHA256PreimageCircuit {
 impl Statement for SHA256PreimageCircuit {
-    fn get_statement(&self) -> &[u8] {
+    // fn get_statement(&self) -> Vec<Option<bool>> {
+    //     self.preimage
+    // }
+    fn get_statement_bytes(&self) -> &[u8] {
         b"TODO NG fake statement instead of hash digest"
     }
 }
-impl Scalarable for SHA256PreimageCircuit {
-    fn to_scalar(&self) -> JubJubScalar {
+impl WitnessScalar for SHA256PreimageCircuit {
+    fn get_witness_scalar(&self) -> JubJubScalar {
         assert!(self.preimage.len() <= 512);
-        JubJubScalar::from_bytes_wide(&bool_vec_to_bytes(&self.preimage))
+        JubJubScalar::from_bytes_wide(&opt_vec_to_bytes(&self.preimage))
     }
 }
 impl<E: Engine> bellman::Circuit<E> for SHA256PreimageCircuit {

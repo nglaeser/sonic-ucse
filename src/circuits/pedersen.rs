@@ -1,5 +1,5 @@
-use crate::util::bool_vec_to_bytes;
-use crate::{Scalarable, Statement};
+use crate::util::opt_vec_to_bytes;
+use crate::{Statement, WitnessScalar};
 use dusk_jubjub::JubJubScalar;
 
 // 'a is a named lifetime (borrowed pointers are required to have lifetimes in impls)
@@ -10,16 +10,17 @@ pub struct PedersenHashPreimageCircuit<'a, E: sapling_crypto::jubjub::JubjubEngi
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Statement
     for PedersenHashPreimageCircuit<'a, E>
 {
-    fn get_statement(&self) -> &[u8] {
+    // fn get_statement(&self) -> None {}
+    fn get_statement_bytes(&self) -> &[u8] {
         b"fake statement instead of hash digest"
     }
 }
-impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Scalarable
+impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> WitnessScalar
     for PedersenHashPreimageCircuit<'a, E>
 {
-    fn to_scalar(&self) -> JubJubScalar {
+    fn get_witness_scalar(&self) -> JubJubScalar {
         assert!(self.preimage.len() <= 512);
-        JubJubScalar::from_bytes_wide(&bool_vec_to_bytes(&self.preimage))
+        JubJubScalar::from_bytes_wide(&opt_vec_to_bytes(&self.preimage))
     }
 }
 // trait Clone for PedersenHashPreimageCircuit
@@ -97,20 +98,23 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Statement
     for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
 {
-    fn get_statement(&self) -> &[u8] {
+    // fn get_statement<T>(&self) -> Point<E, PrimeOrder> {
+    //     self.digest
+    // }
+    fn get_statement_bytes(&self) -> &[u8] {
         b"TODO NG fake statement instead of hash digest, cpk, cpk_o"
     }
 }
-impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Scalarable
+impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> WitnessScalar
     for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
 {
-    fn to_scalar(&self) -> JubJubScalar {
+    fn get_witness_scalar(&self) -> JubJubScalar {
         // TODO NG the below breaks elgamal::ElGamal::encrypt(&circuit.to_big_int(), &srs.pk) (outputs Err)
         // let left = bool_vec_to_big_int(&self.preimage);
         // let right = bool_vec_to_big_int(&self.shift);
         // (left << right.bit_length()) + right
         assert!(self.preimage.len() <= 512);
-        JubJubScalar::from_bytes_wide(&bool_vec_to_bytes(&self.preimage))
+        JubJubScalar::from_bytes_wide(&opt_vec_to_bytes(&self.preimage))
 
         // bool_vec_to_big_int(&self.preimage)
     }

@@ -3,12 +3,12 @@ use crate::srs::SRS;
 use crate::synthesis::{Backend, SynthesisDriver};
 use crate::usig::*;
 use crate::util::*;
-use crate::{Circuit, Coeff, Scalarable, Statement, SynthesisError, Variable};
+use crate::{Circuit, Coeff, Statement, SynthesisError, Variable, WitnessScalar};
 use dusk_pki::{PublicKey, SecretKey};
 use jubjub_schnorr::Signature;
 use lamport_sigs;
 use merlin::Transcript;
-use pairing::{CurveAffine, CurveProjective, Engine, Field};
+use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField};
 use ring::digest::SHA256;
 use std::marker::PhantomData;
 
@@ -20,23 +20,24 @@ pub struct SxyAdvice<E: Engine> {
 }
 
 #[derive(Clone)]
-pub struct SonicProof<A, F> {
-    r: A,
-    t: A,
-    rz: F,
-    rzy: F,
-    z_opening: A,
-    zy_opening: A,
+pub struct SonicProof<E: Engine> {
+    r: E::G1Affine,
+    t: E::G1Affine,
+    rz: E::Fr,
+    rzy: E::Fr,
+    z_opening: E::G1Affine,
+    zy_opening: E::G1Affine,
 }
-impl<A: CurveAffine, F: pairing::PrimeField> SonicProof<A, F> {
+// impl<A: CurveAffine, F: pairing::PrimeField> SonicProof<A, F> {
+impl<E: Engine> SonicProof<E> {
     pub fn dummy() -> Self {
         SonicProof {
-            r: A::one(),
-            rz: F::zero(),
-            rzy: F::zero(),
-            t: A::one(),
-            z_opening: A::one(),
-            zy_opening: A::one(),
+            r: E::G1Affine::one(),
+            t: E::G1Affine::one(),
+            rz: E::Fr::zero(),
+            rzy: E::Fr::zero(),
+            z_opening: E::G1Affine::one(),
+            zy_opening: E::G1Affine::one(),
         }
     }
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -73,14 +74,15 @@ impl<A: CurveAffine, F: pairing::PrimeField> SonicProof<A, F> {
 }
 
 #[derive(Clone)]
-pub struct Proof<E: Engine> {
-    r: E::G1Affine,
-    t: E::G1Affine,
-    rz: E::Fr,
-    rzy: E::Fr,
-    z_opening: E::G1Affine,
-    zy_opening: E::G1Affine,
+pub struct UCProof<E: Engine> {
     c: jubjub_elgamal::Cypher,
+    // r: E::G1Affine,
+    // t: E::G1Affine,
+    // rz: E::Fr,
+    // rzy: E::Fr,
+    // z_opening: E::G1Affine,
+    // zy_opening: E::G1Affine,
+    pi: SonicProof<E>,
     pk_l: PublicKey,
     sigma: Signature,
     pk_ot: lamport_sigs::PublicKey,
@@ -145,7 +147,12 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         })
     }
 
-    pub fn add_aggregate(&mut self, proofs: &[(Proof<E>, SxyAdvice<E>)], aggregate: &Aggregate<E>) {
+    pub fn add_aggregate(
+        &mut self,
+        // proofs: &[(SonicProof<A, F>, SxyAdvice<E>)],
+        proofs: &[(SonicProof<E>, SxyAdvice<E>)],
+        aggregate: &Aggregate<E>,
+    ) {
         let mut transcript = Transcript::new(&[]);
         let mut y_values: Vec<E::Fr> = Vec::with_capacity(proofs.len());
         for &(ref proof, ref sxyadvice) in proofs {
@@ -220,7 +227,7 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
 
     pub fn add_proof_with_advice(
         &mut self,
-        proof: &Proof<E>,
+        proof: &UCProof<E>,
         inputs: &[E::Fr],
         advice: &SxyAdvice<E>,
     ) {
@@ -248,7 +255,7 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
     // add proofs to check (see zkV3) to batcher
     // UCSE: also add the extra fields to Batch, and check everything in
     // Batch.check_all
-    pub fn add_proof<F>(&mut self, proof: &Proof<E>, inputs: &[E::Fr], sxy: F)
+    pub fn add_proof<F>(&mut self, proof: &UCProof<E>, inputs: &[E::Fr], sxy: F)
     where
         F: FnOnce(E::Fr, E::Fr) -> Option<E::Fr>,
     {
@@ -259,42 +266,24 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         self.batch.add_signature(proof.sigma);
         self.batch.add_ot_pk(proof.pk_ot.clone()); // TODO clone()?
         self.batch.add_ot_signature(proof.sigma_ot.clone());
-        let sonic_proof = SonicProof {
-            r: proof.r,
-            rz: proof.rz,
-            rzy: proof.rzy,
-            t: proof.t,
-            z_opening: proof.z_opening,
-            zy_opening: proof.zy_opening,
-        };
-        self.batch.add_underlying_proof(sonic_proof.clone());
 
         //// --- Sonic proof ---
+        self.batch.add_underlying_proof(proof.pi.clone());
         let mut transcript = Transcript::new(&[]);
 
         // zkP1
-        transcript.commit_point(&proof.r);
+        transcript.commit_point(&proof.pi.r);
 
         // zkV1
         let y: E::Fr = transcript.get_challenge_scalar();
 
         // zkP2
-        transcript.commit_point(&proof.t);
+        transcript.commit_point(&proof.pi.t);
 
         // zkV2
         let z: E::Fr = transcript.get_challenge_scalar();
 
         // zkP3
-        transcript.commit_scalar(&proof.rz); // a?
-        transcript.commit_scalar(&proof.rzy); // b?
-
-        let r1: E::Fr = transcript.get_challenge_scalar();
-
-        transcript.commit_point(&proof.z_opening); // W_a, W_t
-        transcript.commit_point(&proof.zy_opening); // W_b
-                                                    // --- (end parse Sonic proof) ---
-
-        // zkV3
         // ----
         // proof.rz:         a
         // proof.rzy:        b
@@ -303,6 +292,13 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         // proof.r:          R
         // proof.t:          T
         // ----
+        transcript.commit_scalar(&proof.pi.rz); // a?
+        transcript.commit_scalar(&proof.pi.rzy); // b?
+
+        let r1: E::Fr = transcript.get_challenge_scalar();
+
+        transcript.commit_point(&proof.pi.z_opening); // W_a, W_t
+        transcript.commit_point(&proof.pi.zy_opening); // W_b
 
         //* b, W_b <- Open(R, yz, r(X,1))
         // First, the easy one. Let's open up proof.r at zy, using proof.zy_opening
@@ -312,9 +308,9 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
             let mut zy = z;
             zy.mul_assign(&y);
             //* check pcV(bp, srs, n, R, yz, (b, W_b))
-            self.batch.add_opening(proof.zy_opening, random, zy); // W_b, zy
-            self.batch.add_commitment_max_n(proof.r, random); // R
-            self.batch.add_opening_value(proof.rzy, random); // b
+            self.batch.add_opening(proof.pi.zy_opening, random, zy); // W_b, zy
+            self.batch.add_commitment_max_n(proof.pi.r, random); // R
+            self.batch.add_opening_value(proof.pi.rzy, random); // b
         }
 
         //// compute t(z,y) = Open(T,z,t(X,y)) ?
@@ -348,9 +344,9 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
 
         //* t <- a(b+s)-k(y)
         // Finally, compute t(z, y)
-        let mut tzy = proof.rzy; // b
+        let mut tzy = proof.pi.rzy; // b
         tzy.add_assign(&szy); // +s
-        tzy.mul_assign(&proof.rz); // *a
+        tzy.mul_assign(&proof.pi.rz); // *a
         tzy.sub_assign(&ky); // -k(y)
 
         // We open these both at the same time by keeping their commitments
@@ -360,17 +356,17 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
 
             //* t, W_t <- Open(T, z, t(X,y))
             //* check pcV(bp, srs, n, T, z, (t, W_t))
-            self.batch.add_opening(proof.z_opening, random, z); // both r,t are opened at z
+            self.batch.add_opening(proof.pi.z_opening, random, z); // both r,t are opened at z
             self.batch.add_opening_value(tzy, random); // t
-            self.batch.add_commitment(proof.t, random); // T
+            self.batch.add_commitment(proof.pi.t, random); // T
 
             // r = r*r1
             random.mul_assign(&r1);
 
             //* a, W_a <- Open(R, z, r(X,1))
             //* check pcV(bp, srs, n, R, z, (a, W_a))
-            self.batch.add_opening_value(proof.rz, random); // a
-            self.batch.add_commitment_max_n(proof.r, random); // R
+            self.batch.add_opening_value(proof.pi.rz, random); // a
+            self.batch.add_commitment_max_n(proof.pi.r, random); // R
         }
     }
 
@@ -385,8 +381,7 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         // check pcV(bp, srs, n, T, z, (t, W_t))
         // return 1 if all checks pass, else return 0
 
-        // because this is the last line, the fn returns the output of this call
-        self.batch.check_all(&self.circuit) // batch.rs:143
+        self.batch.check_all(&self.circuit)
     }
 }
 
@@ -404,7 +399,7 @@ pub struct Aggregate<E: Engine> {
 
 pub fn create_aggregate<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     circuit: &C,
-    inputs: &[(Proof<E>, SxyAdvice<E>)],
+    inputs: &[(SonicProof<E>, SxyAdvice<E>)],
     srs: &SRS<E>,
 ) -> Aggregate<E> {
     // TODO: precompute this?
@@ -629,7 +624,7 @@ pub fn create_aggregate<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
 
 pub fn create_advice<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     circuit: &C,
-    proof: &Proof<E>,
+    proof: &SonicProof<E>,
     srs: &SRS<E>,
 ) -> SxyAdvice<E> {
     // annoying, but we need n to compute s(z, y), and this isn't
@@ -735,10 +730,80 @@ pub fn create_advice<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     SxyAdvice { s, szy, opening }
 }
 
-pub fn create_proof<E: Engine, C: Statement + Scalarable + Circuit<E>, S: SynthesisDriver>(
+// use pairing::bls12_381::{Bls12, Fr};
+// use sapling_crypto::jubjub::edwards::Point;
+// pub type UnderlyingStatement = Point<Bls12, PrimeOrder>;
+// pub struct UCStatement {
+//     x: UnderlyingStatement,
+//     c: jubjub_elgamal::Cypher,
+//     cpk: PublicKey,
+//     cpk_o: PublicKey,
+// }
+// pub type UnderlyingWitness = Vec<Option<bool>>;
+// pub struct UCWitness {
+//     w: UnderlyingWitness,
+//     omega: Fr,
+//     shift: Vec<Option<bool>>,
+// }
+
+// pub fn create_proof<S: SynthesisDriver>(
+pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: SynthesisDriver>(
+    circuit: &C,
+    srs: &SRS<E>,
+    // x: UnderlyingStatement,
+    // w: UnderlyingWitness,
+) -> Result<UCProof<E>, SynthesisError> {
+    // \Sigma.KGen(\secparam)
+    let usig = Schnorr;
+    let (sk_l, pk_l): (SecretKey, PublicKey) = usig.kgen();
+
+    // \Sigma_OT.KGen(\secparam)
+    let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
+    let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
+
+    // UP.Enc(pk_up, w; \omega)
+    // encrypt the *underlying* witness, which is the hash preimage
+    use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
+    let message = GENERATOR_EXTENDED * circuit.get_witness_scalar();
+    let rand = JubJubScalar::random(&mut rand::thread_rng());
+    let c: jubjub_elgamal::Cypher = srs.pk.encrypt(message, rand);
+
+    let sonic_proof = create_underlying_proof::<E, _, S>(circuit, srs).unwrap();
+
+    // \Sigma.Sign(sk_l, pk_ot)
+    // pk_ot is too long so we hash it
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    pk_ot.hash(&mut hasher);
+    let pk_ot_hash: u64 = hasher.finish();
+
+    let sigma: Signature = usig.sign(sk_l, pk_ot_hash);
+
+    // \Sigma_OT.Sign(sk_ot, \pi || x || c || pk_l || \sigma)
+    let message2: Vec<u8> = to_be_bytes(
+        &sonic_proof,
+        circuit.get_statement_bytes(),
+        &c,
+        &pk_l,
+        sigma,
+    );
+    let sigma_ot = sk_ot.sign(&message2[..]);
+
+    Ok(UCProof {
+        c,
+        pi: sonic_proof,
+        pk_l,
+        sigma,
+        pk_ot,
+        sigma_ot,
+    })
+}
+
+pub fn create_underlying_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     circuit: &C, // contains witness
     srs: &SRS<E>,
-) -> Result<Proof<E>, SynthesisError> // where 
+) -> Result<SonicProof<E>, SynthesisError> // where 
 // <E as Engine>::G1Affine: UncompressedEncoding,
 // <E as Engine>::Fr: PrimeField
 {
@@ -968,56 +1033,16 @@ pub fn create_proof<E: Engine, C: Statement + Scalarable + Circuit<E>, S: Synthe
         )
         .into_affine()
     };
+    // zkV3 is in verification algorithm instead
 
-    // US keys
-    let usig = Schnorr;
-    let (sk_l, pk_l): (SecretKey, PublicKey) = usig.kgen();
-    let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
-    let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
-
-    // \Sigma.Sign(sk_l, pk_OT)
-    // let pk_ot_message: Vec<u8> = pk_ot.to_bytes();
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    pk_ot.hash(&mut hasher);
-    let pk_ot_hash = hasher.finish(); // outputs a u64
-
-    let sigma: Signature = usig.sign(sk_l, pk_ot_hash);
-
-    // encrypt the witness (circuit C)
-    use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
-    let message = GENERATOR_EXTENDED * circuit.to_scalar();
-    // let message = curv::BigInt::from(0);
-    let rand = JubJubScalar::random(&mut rand::thread_rng());
-    let c: jubjub_elgamal::Cypher = srs.pk.encrypt(message, rand);
-
-    let sonic_proof = SonicProof {
+    Ok(SonicProof {
         r,
         rz,
         rzy,
         t,
         z_opening,
         zy_opening,
-    };
-    let message2: Vec<u8> = to_be_bytes(&sonic_proof, circuit, &c, &pk_l, sigma);
-    let sigma_ot = sk_ot.sign(&message2[..]);
-
-    Ok(Proof {
-        c,
-        r,
-        rz,
-        rzy,
-        t,
-        z_opening,
-        zy_opening, // sonic proof (\pi_\Pi)
-        pk_l,
-        sigma,
-        pk_ot,
-        sigma_ot,
     })
-
-    // zkV3 is in verification algorithm instead
 }
 
 /*
@@ -1323,7 +1348,7 @@ fn my_fun_circuit_test() {
         }
     }
     impl Statement for MyCircuit {
-        fn get_statement(&self) -> &[u8] {
+        fn get_statement_bytes(&self) -> &[u8] {
             b""
         }
     }
@@ -1338,7 +1363,7 @@ fn my_fun_circuit_test() {
         Fr::from_str("22222").unwrap(),
         Fr::from_str("33333333").unwrap(),
     );
-    let proof = create_proof::<Bls12, _, Permutation3>(&MyCircuit, &srs).unwrap();
+    let proof = create_underlying_proof::<Bls12, _, Permutation3>(&MyCircuit, &srs).unwrap();
 
     use std::time::Instant;
     let start = Instant::now();

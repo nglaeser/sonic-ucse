@@ -1,7 +1,7 @@
 extern crate bellman;
 use crate::{
-    Circuit, Coeff, ConstraintSystem, LinearCombination, Scalarable, Statement, SynthesisError,
-    Variable,
+    Circuit, Coeff, ConstraintSystem, LinearCombination, Statement, SynthesisError, Variable,
+    WitnessScalar,
 };
 use pairing::{Engine, Field};
 use std::marker::PhantomData;
@@ -156,13 +156,16 @@ impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircui
         Ok(())
     }
 }
-impl<C: Scalarable> Scalarable for AdaptorCircuit<C> {
-    fn to_scalar(&self) -> dusk_jubjub::JubJubScalar {
-        self.0.to_scalar()
+impl<C: WitnessScalar> WitnessScalar for AdaptorCircuit<C> {
+    fn get_witness_scalar(&self) -> dusk_jubjub::JubJubScalar {
+        self.0.get_witness_scalar()
     }
 }
 impl<C: Statement> Statement for AdaptorCircuit<C> {
-    fn get_statement(&self) -> &[u8] {
-        self.0.get_statement()
+    // fn get_statement(&self) -> T {
+    //     self.0.get_statement()
+    // }
+    fn get_statement_bytes(&self) -> &[u8] {
+        self.0.get_statement_bytes()
     }
 }

@@ -1,3 +1,4 @@
+use dusk_jubjub;
 use pairing::{Engine, Field};
 use std::ops::{Add, Neg, Sub};
 
@@ -17,14 +18,18 @@ pub enum SynthesisError {
     Violation,
 }
 
-pub trait Scalarable {
-    fn to_scalar(&self) -> dusk_jubjub::JubJubScalar;
-}
 pub trait BigIntable {
     fn to_big_int(&self) -> curv::BigInt;
 }
 pub trait Statement {
-    fn get_statement(&self) -> &[u8];
+    // fn get_statement<T>(&self) -> T;
+    fn get_statement_bytes(&self) -> &[u8];
+}
+pub trait Witness {
+    fn get_witness_bytes(&self) -> Vec<Option<bool>>;
+}
+pub trait WitnessScalar {
+    fn get_witness_scalar(&self) -> dusk_jubjub::JubJubScalar;
 }
 
 pub trait Circuit<E: Engine> {
