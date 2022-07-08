@@ -1,4 +1,4 @@
-use crate::util::opt_vec_to_bytes;
+use crate::util::opt_vec_to_jubjub_scalar;
 use crate::{Statement, WitnessScalar};
 use dusk_jubjub::JubJubScalar;
 
@@ -10,7 +10,6 @@ pub struct PedersenHashPreimageCircuit<'a, E: sapling_crypto::jubjub::JubjubEngi
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Statement
     for PedersenHashPreimageCircuit<'a, E>
 {
-    // fn get_statement(&self) -> None {}
     fn get_statement_bytes(&self) -> &[u8] {
         b"fake statement instead of hash digest"
     }
@@ -19,8 +18,7 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> WitnessScalar
     for PedersenHashPreimageCircuit<'a, E>
 {
     fn get_witness_scalar(&self) -> JubJubScalar {
-        assert!(self.preimage.len() <= 512);
-        JubJubScalar::from_bytes_wide(&opt_vec_to_bytes(&self.preimage))
+        opt_vec_to_jubjub_scalar(&self.preimage)
     }
 }
 // trait Clone for PedersenHashPreimageCircuit
@@ -73,25 +71,34 @@ pub struct PedersenHashPreimageORShiftCircuit<
     E: sapling_crypto::jubjub::JubjubEngine + 'a,
     Subgroup,
 > {
-    pub preimage: Vec<Option<bool>>,
     pub params: &'a E::Params,
-    pub shift: Vec<Option<bool>>, // shift is a scalar
-    // TODO NG this is part of statement not witness
-    pub cpk_o: Point<E, Subgroup>,
-    pub cpk: Point<E, Subgroup>,
+    pub pk: Point<E, Subgroup>,
+    // x' = (x,c, cpk, cpk_o)
     pub digest: Point<E, Subgroup>,
+    pub c: (Point<E, Subgroup>, Point<E, Subgroup>),
+    pub cpk: Point<E, Subgroup>,
+    pub cpk_o: Point<E, Subgroup>,
+    // w' = (w, omega, shift)
+    pub preimage: Vec<Option<bool>>,     // represents a Jubjub point
+    pub preimage_pt: Point<E, Subgroup>, // (specifically, this one)
+    pub omega: Vec<Option<bool>>,        // represents a (Jubjub) scalar
+    pub shift: Vec<Option<bool>>,        // also represents a Jubjub scalar
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
     for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
 {
     fn clone(&self) -> Self {
         PedersenHashPreimageORShiftCircuit {
-            preimage: self.preimage.clone(),
             params: self.params,
-            shift: self.shift.clone(),
-            cpk_o: self.cpk_o.clone(),
-            cpk: self.cpk.clone(),
+            pk: self.pk.clone(),
             digest: self.digest.clone(),
+            c: self.c.clone(),
+            cpk: self.cpk.clone(),
+            cpk_o: self.cpk_o.clone(),
+            preimage: self.preimage.clone(),
+            preimage_pt: self.preimage_pt.clone(),
+            omega: self.omega.clone(),
+            shift: self.shift.clone(),
         }
     }
 }
@@ -109,14 +116,7 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> WitnessScalar
     for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
 {
     fn get_witness_scalar(&self) -> JubJubScalar {
-        // TODO NG the below breaks elgamal::ElGamal::encrypt(&circuit.to_big_int(), &srs.pk) (outputs Err)
-        // let left = bool_vec_to_big_int(&self.preimage);
-        // let right = bool_vec_to_big_int(&self.shift);
-        // (left << right.bit_length()) + right
-        assert!(self.preimage.len() <= 512);
-        JubJubScalar::from_bytes_wide(&opt_vec_to_bytes(&self.preimage))
-
-        // bool_vec_to_big_int(&self.preimage)
+        opt_vec_to_jubjub_scalar(&self.preimage)
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
@@ -133,6 +133,7 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
 
         let mut preimage = vec![];
         let mut shift = vec![];
+        let mut omega = vec![];
 
         for &bit in self.preimage.iter() {
             preimage.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
@@ -140,6 +141,86 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
         for &bit in self.shift.iter() {
             shift.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
         }
+        for &bit in self.omega.iter() {
+            omega.push(Boolean::from(AllocatedBit::alloc(&mut *cs, bit)?));
+        }
+
+        // TODO NG add AND for ciphertext (ct = Enc(pk, w; omega))
+        /*******************************************************************
+         * Require UP.Enc(pk, w; omega) = c
+         * (this is an additional constraint, so ANDs with the OR statement below)
+         * as a linear constraint: (c' - c) == 0
+         *   where c' := UP.Enc(pk, w; omega) = (G * omega, G * w + pk * omega)
+         ******************************************************************/
+        // input pk
+        let pk = EdwardsPoint::witness(&mut *cs, Some(self.pk), self.params)?;
+        // input w (as a point)
+        let preimage_msg = EdwardsPoint::witness(&mut *cs, Some(self.preimage_pt), self.params)?;
+        // input omega (see above)
+        // input G
+        // TODO maybe rename cpk_o?
+        let generator = EdwardsPoint::witness(&mut *cs, Some(self.cpk_o.clone()), self.params)?;
+        // input c = (gamma, delta)
+        let gamma = EdwardsPoint::witness(&mut *cs, Some(self.c.0), self.params)?;
+        let delta = EdwardsPoint::witness(&mut *cs, Some(self.c.1), self.params)?;
+        // input -c = (-gamma, -delta)
+        // let neg_gamma = EdwardsPoint::witness(&mut *cs, Some(self.c.0.negate()), self.params)?;
+        // let neg_delta = EdwardsPoint::witness(&mut *cs, Some(self.c.1.negate()), self.params)?;
+
+        // compute c' = (gamma', delta') = UP.Enc(pk, w; omega)
+        let s_prime = pk.mul(
+            cs.namespace(|| "multiplication of pk to omega"),
+            &omega,
+            self.params,
+        )?;
+        let delta_prime = s_prime.add(
+            cs.namespace(|| "add witness to s_prime"),
+            &preimage_msg,
+            self.params,
+        )?;
+        let gamma_prime = generator.mul(
+            cs.namespace(|| "multiplication of generator to omega"),
+            &omega,
+            self.params,
+        )?;
+
+        // let gamma_constraint = gamma_prime.add(
+        //     cs.namespace(|| "subtract gamma from gamma_prime"),
+        //     &neg_gamma,
+        //     self.params,
+        // )?;
+        // let delta_constraint = delta_prime.add(
+        //     cs.namespace(|| "subtract delta from delta_prime"),
+        //     &neg_delta,
+        //     self.params,
+        // )?;
+
+        // enforce gamma = gamma'
+        cs.enforce(
+            || "ciphertext gamma constraint x-coord",
+            |lc| lc + gamma.get_x().get_variable(),
+            |lc| lc + CS::one(),
+            |lc| lc + gamma_prime.get_x().get_variable(),
+        );
+        cs.enforce(
+            || "ciphertext gamma constraint y-coord",
+            |lc| lc + gamma.get_y().get_variable(),
+            |lc| lc + CS::one(),
+            |lc| lc + gamma_prime.get_y().get_variable(),
+        );
+        // enforce delta = delta'
+        cs.enforce(
+            || "ciphertext delta constraint x-coord",
+            |lc| lc + delta.get_x().get_variable(),
+            |lc| lc + CS::one(),
+            |lc| lc + delta_prime.get_x().get_variable(),
+        );
+        cs.enforce(
+            || "ciphertext delta constraint y-coord",
+            |lc| lc + delta.get_y().get_variable(),
+            |lc| lc + CS::one(),
+            |lc| lc + delta_prime.get_y().get_variable(),
+        );
 
         /*******************************************************************
          * OR statement: (cpk_0 * shift == cpk) OR (H(preimage) == digest)

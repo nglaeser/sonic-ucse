@@ -417,6 +417,19 @@ impl<T> OptionExt<T> for Option<T> {
     }
 }
 
+pub fn byte_arr_to_be_arr(arr: &[u8], len: usize, buf: &mut [bool]) {
+    // TODO there must be a better way to do this
+    for i in 0..len {
+        // let mut curr = [false; 8];
+        for j in 0..8 {
+            let mask: u8 = 1 << j;
+            let byte = arr[i];
+            buf[i * 8 + (8 - (j + 1))] = mask & byte != 0u8;
+        }
+        // println!("byte: {}\tbits: {:?}", vec[i], curr);
+    }
+}
+
 pub fn opt_vec_to_bytes(vec: &Vec<Option<bool>>) -> [u8; 64] {
     let out: Vec<bool> = vec.iter().map(|x| x.unwrap()).collect::<Vec<bool>>();
     bool_vec_to_bytes(&out)
@@ -458,4 +471,10 @@ pub fn bool_vec_to_big_int(vec: &Vec<Option<bool>>) -> curv::BigInt {
         out = out + tmp;
     }
     out
+}
+
+use dusk_jubjub::JubJubScalar;
+pub fn opt_vec_to_jubjub_scalar(vec: &Vec<Option<bool>>) -> JubJubScalar {
+    assert!(vec.len() <= 512);
+    JubJubScalar::from_bytes_wide(&opt_vec_to_bytes(&vec))
 }

@@ -1,7 +1,8 @@
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField, Wnaf};
 // use rand::rngs::OsRng;
 use crate::usig::{Schnorr, Sig};
-use dusk_pki::{PublicKey, SecretKey};
+use dusk_pki::{PublicKey as SigPK, SecretKey as SigSK};
+use jubjub_elgamal::{PrivateKey as EncSK, PublicKey as EncPK};
 
 pub struct SRS<E: Engine> {
     pub d: usize,
@@ -30,19 +31,19 @@ pub struct SRS<E: Engine> {
     // alpha*(h^{x^0}, g^{x^{1}}, g^{x^{2}}, ..., g^{x^{d}})
     pub h_positive_x_alpha: Vec<E::G2Affine>,
 
-    pub cpk: PublicKey,
-    pub pk: jubjub_elgamal::PublicKey,
+    pub cpk: SigPK,
+    pub pk: EncPK,
 }
 
 impl<E: Engine> SRS<E> {
     pub fn dummy(d: usize, _: E::Fr, _: E::Fr) -> Self {
         // generate srs signature keys
         let usig = Schnorr;
-        let (_sk_sig, pk_sig): (SecretKey, PublicKey) = usig.kgen();
+        let (_sk_sig, pk_sig): (SigSK, SigPK) = usig.kgen();
 
         // generate srs KU-PKE keys
-        let sk = jubjub_elgamal::PrivateKey::new(&mut rand::thread_rng());
-        let pk = jubjub_elgamal::PublicKey::from(sk);
+        let sk = EncSK::new(&mut rand::thread_rng());
+        let pk = EncPK::from(sk);
 
         SRS {
             d: d,
@@ -97,7 +98,7 @@ impl<E: Engine> SRS<E> {
 
         // generate srs signature keys
         let usig = Schnorr;
-        let (_sk_sig, pk_sig): (SecretKey, PublicKey) = usig.kgen();
+        let (_sk_sig, pk_sig): (SigSK, SigPK) = usig.kgen();
 
         // generate srs KU-PKE keys
         let sk = jubjub_elgamal::PrivateKey::new(&mut rand::thread_rng());

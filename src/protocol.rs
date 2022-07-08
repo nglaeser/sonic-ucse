@@ -768,6 +768,7 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     let rand = JubJubScalar::random(&mut rand::thread_rng());
     let c: jubjub_elgamal::Cypher = srs.pk.encrypt(message, rand);
 
+    // \Pi.P(srs, (x, c), (w, \bot, \bot))
     let sonic_proof = create_underlying_proof::<E, _, S>(circuit, srs).unwrap();
 
     // \Sigma.Sign(sk_l, pk_ot)
