@@ -25,8 +25,78 @@ pub fn dusk_to_sapling(dusk_jubjub_point: JubJubExtended) -> Point<Bls12, PrimeO
         Fr::from_repr(FrRepr(dusk_jubjub_point.get_z().0)).unwrap(),
     )
 }
+use dusk_jubjub::JubJubScalar;
+pub fn be_opt_vec_to_jubjub_scalar(vec: &Vec<Option<bool>>) -> JubJubScalar {
+    assert!(vec.len() <= 512);
+    let be_bytes = opt_vec_to_bytes(&vec);
+    let mut be_bytes_arr = [0u8; 64];
+    for i in 0..be_bytes.len() {
+        be_bytes_arr[i] = be_bytes[i];
+    }
+    JubJubScalar::from_bytes_wide(&be_bytes_arr)
+}
 
-// pub fn to_be_bytes<A: CurveAffine, F: pairing::PrimeField>(
+pub fn le_bytes_to_le_bits(arr: &[u8], len: usize, buf: &mut [bool]) {
+    for i in 0..len {
+        let mut mask: u8 = 0b10000000;
+        let byte = arr[i];
+        for j in 0..8 {
+            buf[i * 8 + (7 - j)] = mask & byte != 0u8;
+            mask = mask >> 1;
+        }
+    }
+}
+
+pub fn byte_arr_to_bool_arr(arr: &[u8], len: usize, buf: &mut [bool]) {
+    for i in 0..len {
+        let mut mask: u8 = 0b10000000;
+        let byte = arr[i];
+        for j in 0..8 {
+            buf[i * 8 + j] = mask & byte != 0u8;
+            mask = mask >> 1;
+        }
+    }
+}
+
+pub fn opt_vec_to_bytes(vec: &Vec<Option<bool>>) -> Vec<u8> {
+    let out: Vec<bool> = vec.iter().map(|x| x.unwrap()).collect::<Vec<bool>>();
+    bool_vec_to_bytes(&out)
+}
+pub fn bool_vec_to_bytes(vec: &Vec<bool>) -> Vec<u8> {
+    // re-interpret the bit vector as a byte vector
+    let mut out = Vec::new();
+
+    let mut slice = vec![false; 8];
+    for i in 0..(vec.len() / 8) {
+        let start = i * 8;
+        let end = (i + 1) * 8;
+        slice.copy_from_slice(&vec[start..end]);
+        let tmp: u8 = vec.iter().rev().fold(0, |acc, &b| (acc << 1) + b as u8);
+        out.push(tmp);
+    }
+    out
+}
+
+pub fn bool_vec_to_big_int(vec: &Vec<Option<bool>>) -> curv::BigInt {
+    let len = vec.len();
+
+    let mut slice = vec![Some(false); 64];
+    let mut out = curv::BigInt::from(0);
+    for i in 0..(len / 64) {
+        let start = i * 64;
+        let end = (i + 1) * 64;
+        slice.copy_from_slice(&vec[start..end]);
+
+        // convert slice to u64
+        let tmp: u64 = vec
+            .iter()
+            .rev()
+            .fold(0, |acc, &b| (acc << 1) + b.unwrap() as u64);
+        out = out + tmp;
+    }
+    out
+}
+
 pub fn to_be_bytes<E: Engine>(
     pi: &SonicProof<E>,
     x_bytes: &[u8],
@@ -415,135 +485,4 @@ impl<T> OptionExt<T> for Option<T> {
             None => Err(SynthesisError::AssignmentMissing),
         }
     }
-}
-
-pub fn le_bytes_to_le_bits(arr: &[u8], len: usize, buf: &mut [bool]) {
-    for i in 0..len {
-        let mut mask: u8 = 0b10000000;
-        let byte = arr[i];
-        for j in 0..8 {
-            buf[i * 8 + (7 - j)] = mask & byte != 0u8;
-            mask = mask >> 1;
-        }
-    }
-}
-
-pub fn byte_arr_to_bool_arr(arr: &[u8], len: usize, buf: &mut [bool]) {
-    for i in 0..len {
-        let mut mask: u8 = 0b10000000;
-        let byte = arr[i];
-        for j in 0..8 {
-            buf[i * 8 + j] = mask & byte != 0u8;
-            mask = mask >> 1;
-        }
-    }
-}
-
-pub fn byte_arr_to_le_arr(arr: &[u8], len: usize, buf: &mut [bool]) {
-    for i in 0..len {
-        for j in 0..8 {
-            let mask: u8 = 1 << j;
-            let byte = arr[i];
-            buf[i * 8] = mask & byte != 0u8;
-        }
-    }
-}
-
-pub fn byte_arr_to_be_arr(arr: &[u8], len: usize, buf: &mut [bool]) {
-    // TODO there must be a better way to do this
-    for i in 0..len {
-        // let mut curr = [false; 8];
-        for j in 0..8 {
-            let mask: u8 = 1 << j;
-            let byte = arr[i];
-            buf[i * 8 + (8 - (j + 1))] = mask & byte != 0u8;
-        }
-        // println!("byte: {}\tbits: {:?}", vec[i], curr);
-    }
-}
-
-pub fn opt_vec_to_bytes(vec: &Vec<Option<bool>>) -> Vec<u8> {
-    let out: Vec<bool> = vec.iter().map(|x| x.unwrap()).collect::<Vec<bool>>();
-    bool_vec_to_bytes(&out)
-}
-
-pub fn bool_vec_to_bytes(vec: &Vec<bool>) -> Vec<u8> {
-    // unwrap each Option<bool> into a bit
-    // re-interpret the bit vector as a byte vector
-    let mut out = Vec::new();
-
-    let mut slice = vec![false; 8];
-    for i in 0..(vec.len() / 8) {
-        let start = i * 8;
-        let end = (i + 1) * 8;
-        slice.copy_from_slice(&vec[start..end]);
-        let tmp: u8 = vec.iter().rev().fold(0, |acc, &b| (acc << 1) + b as u8);
-        out.push(tmp);
-    }
-    out
-}
-
-use sapling_crypto::jubjub::fs::FsRepr;
-pub fn le_bytes_to_sapling_scalar(arr: [u8; 32]) -> FsRepr {
-    let mut be_bytes = arr.clone();
-    be_bytes.reverse();
-
-    let mut out = FsRepr([0; 4]);
-    out.read_be(be_bytes.as_slice());
-    out
-}
-
-pub fn le_opt_vec_to_sapling_scalar(vec: &Vec<Option<bool>>) -> FsRepr {
-    assert!(vec.len() <= 64 * 4);
-
-    // convert to (LE) bytes first
-    let le_bytes = opt_vec_to_bytes(vec);
-    let mut le_bytes_arr = [0u8; 32];
-    for i in 0..le_bytes.len() {
-        le_bytes_arr[i] = le_bytes[i];
-    }
-    // let mut slice = vec![Some(false); 8];
-    // let mut bytes = [0u8; 32];
-    // for i in 0..len / 8 {
-    //     let start = i * 8;
-    //     let end = (i + 1) * 8;
-    //     slice.copy_from_slice(&vec[start..end]);
-
-    //     // convert slice to u8
-    //     bytes[i] = slice
-    //         .iter()
-    //         .fold(0, |acc, &b| (acc << 1) + b.unwrap() as u8);
-    // }
-    // convert LE bytes to scalar
-    le_bytes_to_sapling_scalar(le_bytes_arr)
-}
-pub fn bool_vec_to_big_int(vec: &Vec<Option<bool>>) -> curv::BigInt {
-    let len = vec.len();
-
-    let mut slice = vec![Some(false); 64];
-    let mut out = curv::BigInt::from(0);
-    for i in 0..(len / 64) {
-        let start = i * 64;
-        let end = (i + 1) * 64;
-        slice.copy_from_slice(&vec[start..end]);
-
-        // convert slice to u64
-        let tmp: u64 = vec
-            .iter()
-            .rev()
-            .fold(0, |acc, &b| (acc << 1) + b.unwrap() as u64);
-        out = out + tmp;
-    }
-    out
-}
-
-use dusk_jubjub::JubJubScalar;
-pub fn opt_vec_to_jubjub_scalar(vec: &Vec<Option<bool>>) -> JubJubScalar {
-    assert!(vec.len() <= 512);
-    let bytes = opt_vec_to_bytes(&vec);
-    let mut bytes_arr = [0u8; 64];
-    for i in 0..bytes.len() {
-        bytes_arr[i] = bytes[i];
-    }
-    JubJubScalar::from_bytes_wide(&bytes_arr)
 }

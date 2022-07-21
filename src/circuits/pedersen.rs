@@ -1,4 +1,4 @@
-use crate::util::opt_vec_to_jubjub_scalar;
+use crate::util::be_opt_vec_to_jubjub_scalar;
 use crate::{Statement, WitnessScalar};
 use dusk_jubjub::JubJubScalar;
 
@@ -18,7 +18,7 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> WitnessScalar
     for PedersenHashPreimageCircuit<'a, E>
 {
     fn get_witness_scalar(&self) -> JubJubScalar {
-        opt_vec_to_jubjub_scalar(&self.preimage)
+        be_opt_vec_to_jubjub_scalar(&self.preimage)
     }
 }
 // trait Clone for PedersenHashPreimageCircuit
@@ -72,13 +72,13 @@ pub struct PedersenHashPreimageORShiftCircuit<
     Subgroup,
 > {
     pub params: &'a E::Params,
-    // x' = (x,c, cpk, cpk_o)
+    // x' = (x, cpk, cpk_o)
     pub digest: Point<E, Subgroup>,
     pub cpk: Point<E, Subgroup>,
     pub cpk_o: Point<E, Subgroup>,
-    // w' = (w, omega, shift)
+    // w' = (w, shift)
     pub preimage: Vec<Option<bool>>, // represents a Jubjub point
-    pub shift: Vec<Option<bool>>,    // also represents a Jubjub scalar
+    pub shift: Vec<Option<bool>>,    // represents a Jubjub scalar
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
     for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
@@ -108,7 +108,7 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> WitnessScalar
     for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
 {
     fn get_witness_scalar(&self) -> JubJubScalar {
-        opt_vec_to_jubjub_scalar(&self.preimage)
+        be_opt_vec_to_jubjub_scalar(&self.preimage)
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
@@ -251,7 +251,7 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> WitnessScalar
     for PedersenHashPreimageUCCircuit<'a, E, Subgroup>
 {
     fn get_witness_scalar(&self) -> JubJubScalar {
-        opt_vec_to_jubjub_scalar(&self.preimage)
+        be_opt_vec_to_jubjub_scalar(&self.preimage)
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>

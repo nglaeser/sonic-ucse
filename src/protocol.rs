@@ -76,13 +76,7 @@ impl<E: Engine> SonicProof<E> {
 #[derive(Clone)]
 pub struct UCProof<E: Engine> {
     c: jubjub_elgamal::Cypher,
-    // r: E::G1Affine,
-    // t: E::G1Affine,
-    // rz: E::Fr,
-    // rzy: E::Fr,
-    // z_opening: E::G1Affine,
-    // zy_opening: E::G1Affine,
-    pi: SonicProof<E>,
+    pub pi: SonicProof<E>,
     pk_l: PublicKey,
     sigma: Signature,
     pk_ot: lamport_sigs::PublicKey,
@@ -225,15 +219,15 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         self.batch.add_opening(aggregate.s_opening, random, z);
     }
 
-    pub fn add_proof_with_advice(
+    pub fn add_underlying_proof_with_advice(
         &mut self,
-        proof: &UCProof<E>,
+        proof: &SonicProof<E>,
         inputs: &[E::Fr],
         advice: &SxyAdvice<E>,
     ) {
         let mut z = None;
 
-        self.add_proof(proof, inputs, |_z, _y| {
+        self.add_underlying_proof(proof, inputs, |_z, _y| {
             z = Some(_z);
             Some(advice.szy)
         });

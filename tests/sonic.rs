@@ -7,15 +7,11 @@ mod tests {
     use dusk_jubjub::{JubJubExtended, JubJubScalar, GENERATOR_EXTENDED};
     use pairing::bls12_381::{Bls12, Fr};
     use pairing::PrimeField;
-    use sapling_crypto::circuit;
     use sapling_crypto::jubjub::fs::FsRepr;
     use sapling_crypto::jubjub::JubjubBls12;
     use sapling_crypto::jubjub::PrimeOrder;
     use sonic_ucse::circuits::adaptor::AdaptorCircuit;
-    use sonic_ucse::util::{
-        byte_arr_to_be_arr, byte_arr_to_bool_arr, dusk_to_sapling, le_bytes_to_le_bits,
-        le_bytes_to_sapling_scalar, le_opt_vec_to_sapling_scalar, opt_vec_to_jubjub_scalar,
-    };
+    use sonic_ucse::util::{be_opt_vec_to_jubjub_scalar, dusk_to_sapling, le_bytes_to_le_bits};
     use sonic_ucse::{protocol::*, srs::SRS, synthesis::Permutation3};
     const PEDERSEN_PREIMAGE_BITS: usize = 384;
 
@@ -53,7 +49,7 @@ mod tests {
     impl Preimage {
         fn dummy() -> Preimage {
             let opt = vec![Some(true); PEDERSEN_PREIMAGE_BITS];
-            let pt = GENERATOR_EXTENDED * opt_vec_to_jubjub_scalar(&opt);
+            let pt = GENERATOR_EXTENDED * be_opt_vec_to_jubjub_scalar(&opt);
             let sapling = dusk_to_sapling(pt);
             let bool =
                 std::convert::TryInto::try_into(opt.iter().map(|b| b.unwrap()).collect::<Vec<_>>())
@@ -70,20 +66,12 @@ mod tests {
 
     struct Rand {
         scalar: JubJubScalar,
-        // bool: [bool; JubJubScalar::SIZE * 8],
         opt: Vec<Option<bool>>,
         sapling: FsRepr,
-        // sapling_le: FsRepr,
     }
     impl Rand {
         fn new() -> Rand {
             let scalar = JubJubScalar::random(&mut rand::thread_rng());
-            let be_bytes = scalar
-                .to_bytes()
-                .iter()
-                .rev()
-                .map(|x| *x)
-                .collect::<Vec<u8>>();
             let le_bytes = scalar.to_bytes();
 
             // scalar to little-endian *bit* order
@@ -94,24 +82,21 @@ mod tests {
             // sapling scalar
             let mut sapling = FsRepr([0; 4]);
             use pairing::PrimeFieldRepr;
-            sapling.read_le(le_bytes.as_slice());
-            // sapling.read_be(be_bytes.as_slice());
-            // let mut sapling_le = FsRepr([0; 4]);
-            // sapling_le.read_be(le_bytes.as_slice());
+            sapling.read_le(le_bytes.as_slice()).unwrap();
 
             Rand {
                 scalar,
-                // bool,
                 opt: opt_le,
                 sapling,
-                // sapling_le,
             }
         }
     }
 
     #[test]
+    #[allow(non_snake_case)]
     fn test_dusk_sapling_ops() {
-        #![allow(non_snake_case)]
+        /* make sure addition and scalar multiplication are equivalent in dusk and sapling (both implementations of Jubjub)
+         */
         use dusk_jubjub::JubJubScalar;
         let a = JubJubScalar::random(&mut rand::thread_rng());
         let A = GENERATOR_EXTENDED * a;
@@ -133,11 +118,11 @@ mod tests {
         let prod_dusk = A * s;
         print!("{:?}", prod_dusk);
 
-        let s_bytes = s.to_bytes(); // little-endian
-        let s_sapling = le_bytes_to_sapling_scalar(s_bytes);
+        use pairing::PrimeFieldRepr;
+        let mut s_sapling = FsRepr([0; 4]);
+        s_sapling.read_le(s.to_bytes().as_slice()).unwrap();
+
         let prod_sapling = A_sapling.mul(s_sapling, &params);
-        print!("{:?}", prod_sapling.into_xy());
-        print!("{:?}", dusk_to_sapling(prod_dusk).into_xy());
 
         assert!(dusk_to_sapling(prod_dusk) == prod_sapling);
     }
@@ -162,13 +147,14 @@ mod tests {
 
     #[test]
     fn test_elgamal_comp_sapling() {
+        /* Make sure manually doing ElGamal encryption in sapling is the same as the jubjub_elgamal implementation
+         */
         use dusk_jubjub::GENERATOR_EXTENDED;
 
         // variables
         let vars = Vars::new();
         let generator_sapling = dusk_to_sapling(GENERATOR_EXTENDED);
         let pk_sapling = dusk_to_sapling(vars.srs.pk.0);
-        // let preimage_sapling = dusk_to_sapling(vars.preimage.pt);
 
         // encrypt using jubjub-elgamal
         let c_dusk: jubjub_elgamal::Cypher =
@@ -184,27 +170,16 @@ mod tests {
             .mul(vars.rand.sapling, &vars.params)
             .add(&vars.preimage.sapling, &vars.params);
 
-        // dbg!(
-        //     "gamma: {}\ngamma': {}\n",
-        //     c_sapling.0.into_xy(),
-        //     gamma_prime.into_xy()
-        // );
-        // dbg!(
-        //     "delta: {}\ndelta': {}",
-        //     c_sapling.1.into_xy(),
-        //     delta_prime.into_xy()
-        // );
         assert!(c_sapling.0 == gamma_prime);
         assert!(c_sapling.1 == delta_prime);
     }
 
     #[test]
     #[ignore]
+    #[allow(non_snake_case)]
     fn test_sapling_ops_out_in_circuit() {
-        // do the same ops as in the test_dusk_sapling_ops
-        // sapling outside the circuit
-        // AND inside the circuit (simple circuit)
-        // check they are the same.
+        /* Check that addition and scalar multiplication in sapling are equivalent outside and inside a circuit
+         */
         use sapling_crypto::jubjub::edwards::Point;
         use sonic_ucse::{Statement, WitnessScalar};
         pub struct TestCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> {
@@ -271,21 +246,6 @@ mod tests {
                 let prod_prime =
                     A.mul(cs.namespace(|| "scalar multiplication"), &s, self.params)?;
 
-                println!(
-                    "sum: {:?}, {:?}, sum': {:?}, {:?}",
-                    sum.get_x().get_value(),
-                    sum.get_y().get_value(),
-                    sum_prime.get_x().get_value(),
-                    sum_prime.get_y().get_value()
-                );
-                dbg!(
-                    "prod: {}, {}, prod': {}, {}",
-                    prod.get_x().get_value(),
-                    prod.get_y().get_value(),
-                    prod_prime.get_x().get_value(),
-                    prod_prime.get_y().get_value()
-                );
-
                 cs.enforce(
                     || "sum constraint x-coord",
                     |lc| lc + sum.get_x().get_variable(),
@@ -319,7 +279,6 @@ mod tests {
         let b = JubJubScalar::random(&mut rand::thread_rng());
         let B = GENERATOR_EXTENDED * b;
         let s = JubJubScalar::random(&mut rand::thread_rng());
-        // let s = JubJubScalar::from(2u64);
 
         // point addition
         let sum_dusk = A + B;
@@ -327,11 +286,8 @@ mod tests {
         let prod_dusk = A * s;
 
         let s_le_bytes = s.to_bytes();
-        // let s_be_bytes = s.to_bytes().iter().rev().map(|x| *x).collect::<Vec<u8>>();
         let mut s_bool = [false; JubJubScalar::SIZE * 8];
         le_bytes_to_le_bits(s_le_bytes.as_slice(), JubJubScalar::SIZE, &mut s_bool);
-        // byte_arr_to_bool_arr(s_be_bytes.as_slice(), JubJubScalar::SIZE, &mut s_bool);
-        // byte_arr_to_bool_arr(s_le_bytes.as_slice(), JubJubScalar::SIZE, &mut s_bool);
         let s_opt = s_bool.iter().map(|x| Some(*x)).collect::<Vec<_>>();
 
         let params = JubjubBls12::new();
@@ -366,10 +322,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_uc_proof_pedersen_sapling_in() {
-        // We already saw in the previous test (`test_elgamal_comp_sapling`) that
-        // manual sapling encryption is equivalent to jubjub-elgamal encryption.
-        // Let's pass in the manual sapling ctxt instead of the jubjub-elgamal ctxt
-        // and see if the proof passes then.
+        /* We already saw in a previous test (`test_elgamal_comp_sapling`) that manual sapling encryption is equivalent to jubjub-elgamal encryption. Here we check that the UC proof accepts a manual sapling encryption as equivalent to the *same* manual sapling encryption performed inside the circuit.
+         */
         use sapling_crypto::pedersen_hash;
         use sonic_ucse::circuits::adaptor::AdaptorCircuit;
         use sonic_ucse::circuits::pedersen::PedersenHashPreimageUCCircuit;
@@ -386,16 +340,10 @@ mod tests {
         let generator_sapling = dusk_to_sapling(GENERATOR_EXTENDED);
         let pk_sapling = dusk_to_sapling(vars.srs.pk.0);
         let gamma = generator_sapling.mul(vars.rand.sapling, &vars.params);
-        // let gamma = generator_sapling.mul(vars.rand.sapling, &vars.params);
-        let s = pk_sapling.mul(vars.rand.sapling, &vars.params);
         let delta = pk_sapling
             .mul(vars.rand.sapling, &vars.params)
             .add(&vars.preimage.sapling, &vars.params);
         let c_sapling = (gamma, delta);
-        // TODO this^ should be the same thing happening inside the circuit? And yet it doesn't pass... is something wrong with the computation in the circuit?
-        // dbg!("pk outside circuit: {}", pk_sapling.into_xy());
-        dbg!("s: {}", s.into_xy());
-        // dbg!("gamma.into_xy(): {}", c_sapling.0.into_xy());
 
         let circuit = PedersenHashPreimageUCCircuit {
             params: &vars.params,
@@ -405,7 +353,6 @@ mod tests {
             c: c_sapling,
             cpk: dusk_to_sapling(*vars.srs.cpk.as_ref()),
             cpk_o: generator_sapling,
-            //dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED),
             // w' = (w, omega, shift)
             preimage: vars.preimage.opt,
             preimage_pt: vars.preimage.sapling,
@@ -417,19 +364,19 @@ mod tests {
         let proof =
             create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &vars.srs)
                 .unwrap();
-        // let proof = create_proof::<Bls12>(&srs, digest, preimage_opt).unwrap();
 
-        // print!("verify proof");
-        // let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
-        //     AdaptorCircuit(circuit.clone()),
-        //     &vars.srs,
-        // )
-        // .unwrap();
-        // verifier.add_proof(&proof, &[], |_, _| None);
-        // assert_eq!(verifier.check_all(), true); // TODO
+        print!("verify proof");
+        let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
+            AdaptorCircuit(circuit.clone()),
+            &vars.srs,
+        )
+        .unwrap();
+        verifier.add_proof(&proof, &[], |_, _| None);
+        assert_eq!(verifier.check_all(), true);
     }
 
     #[test]
+    #[ignore]
     fn test_uc_proof_pedersen() {
         use sapling_crypto::pedersen_hash;
         use sonic_ucse::circuits::adaptor::AdaptorCircuit;
@@ -464,7 +411,6 @@ mod tests {
         let proof =
             create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &vars.srs)
                 .unwrap();
-        // let proof = create_proof::<Bls12>(&srs, digest, preimage_opt).unwrap();
 
         print!("verify proof");
         let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
@@ -510,15 +456,17 @@ mod tests {
         };
         print!("create proof");
         type ChosenBackend = Permutation3;
-        let proof = create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
-            .unwrap();
-        // let proof = create_proof::<Bls12>(&srs, digest, preimage_opt).unwrap();
+        let proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
+            &AdaptorCircuit(circuit.clone()),
+            &srs,
+        )
+        .unwrap();
 
         print!("verify proof");
         let mut verifier =
             MultiVerifier::<Bls12, _, ChosenBackend>::new(AdaptorCircuit(circuit.clone()), &srs)
                 .unwrap();
-        verifier.add_proof(&proof, &[], |_, _| None);
+        verifier.add_underlying_proof(&proof, &[], |_, _| None);
         assert_eq!(verifier.check_all(), true);
     }
 
@@ -535,7 +483,6 @@ mod tests {
 
         // set up proof statement variables
         let params = sapling_crypto::jubjub::JubjubBls12::new();
-        // x' := (digest, c, cpk, cpk_0) // TODO add c (AND)
         let preimage_opt = vec![Some(true); PEDERSEN_PREIMAGE_BITS];
         let circuit = PedersenHashPreimageCircuit {
             preimage: preimage_opt,
@@ -544,14 +491,17 @@ mod tests {
 
         print!("create proof");
         type ChosenBackend = Permutation3;
-        let proof = create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
-            .unwrap();
+        let proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
+            &AdaptorCircuit(circuit.clone()),
+            &srs,
+        )
+        .unwrap();
 
         print!("verify proof");
         let mut verifier =
             MultiVerifier::<Bls12, _, ChosenBackend>::new(AdaptorCircuit(circuit.clone()), &srs)
                 .unwrap();
-        verifier.add_proof(&proof, &[], |_, _| None);
-        assert_eq!(verifier.check_all(), true); // TODO
+        verifier.add_underlying_proof(&proof, &[], |_, _| None);
+        assert_eq!(verifier.check_all(), true);
     }
 }
