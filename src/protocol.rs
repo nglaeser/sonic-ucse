@@ -252,9 +252,6 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         self.batch.add_opening_value(advice.szy, random);
     }
 
-    // add proofs to check (see zkV3) to batcher
-    // UCSE: also add the extra fields to Batch, and check everything in
-    // Batch.check_all
     pub fn add_proof<F>(&mut self, proof: &UCProof<E>, inputs: &[E::Fr], sxy: F)
     where
         F: FnOnce(E::Fr, E::Fr) -> Option<E::Fr>,
@@ -268,17 +265,27 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         self.batch.add_ot_signature(proof.sigma_ot.clone());
 
         //// --- Sonic proof ---
-        self.batch.add_underlying_proof(proof.pi.clone());
+        self.add_underlying_proof(&proof.pi, inputs, sxy);
+    }
+
+    // add proofs to check (see zkV3) to batcher
+    // UCSE: also add the extra fields to Batch, and check everything in
+    // Batch.check_all
+    pub fn add_underlying_proof<F>(&mut self, proof: &SonicProof<E>, inputs: &[E::Fr], sxy: F)
+    where
+        F: FnOnce(E::Fr, E::Fr) -> Option<E::Fr>,
+    {
+        self.batch.add_underlying_proof(proof.clone());
         let mut transcript = Transcript::new(&[]);
 
         // zkP1
-        transcript.commit_point(&proof.pi.r);
+        transcript.commit_point(&proof.r);
 
         // zkV1
         let y: E::Fr = transcript.get_challenge_scalar();
 
         // zkP2
-        transcript.commit_point(&proof.pi.t);
+        transcript.commit_point(&proof.t);
 
         // zkV2
         let z: E::Fr = transcript.get_challenge_scalar();
@@ -292,13 +299,13 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
         // proof.r:          R
         // proof.t:          T
         // ----
-        transcript.commit_scalar(&proof.pi.rz); // a?
-        transcript.commit_scalar(&proof.pi.rzy); // b?
+        transcript.commit_scalar(&proof.rz); // a?
+        transcript.commit_scalar(&proof.rzy); // b?
 
         let r1: E::Fr = transcript.get_challenge_scalar();
 
-        transcript.commit_point(&proof.pi.z_opening); // W_a, W_t
-        transcript.commit_point(&proof.pi.zy_opening); // W_b
+        transcript.commit_point(&proof.z_opening); // W_a, W_t
+        transcript.commit_point(&proof.zy_opening); // W_b
 
         //* b, W_b <- Open(R, yz, r(X,1))
         // First, the easy one. Let's open up proof.r at zy, using proof.zy_opening
@@ -308,9 +315,9 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
             let mut zy = z;
             zy.mul_assign(&y);
             //* check pcV(bp, srs, n, R, yz, (b, W_b))
-            self.batch.add_opening(proof.pi.zy_opening, random, zy); // W_b, zy
-            self.batch.add_commitment_max_n(proof.pi.r, random); // R
-            self.batch.add_opening_value(proof.pi.rzy, random); // b
+            self.batch.add_opening(proof.zy_opening, random, zy); // W_b, zy
+            self.batch.add_commitment_max_n(proof.r, random); // R
+            self.batch.add_opening_value(proof.rzy, random); // b
         }
 
         //// compute t(z,y) = Open(T,z,t(X,y)) ?
@@ -344,9 +351,9 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
 
         //* t <- a(b+s)-k(y)
         // Finally, compute t(z, y)
-        let mut tzy = proof.pi.rzy; // b
+        let mut tzy = proof.rzy; // b
         tzy.add_assign(&szy); // +s
-        tzy.mul_assign(&proof.pi.rz); // *a
+        tzy.mul_assign(&proof.rz); // *a
         tzy.sub_assign(&ky); // -k(y)
 
         // We open these both at the same time by keeping their commitments
@@ -356,17 +363,17 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
 
             //* t, W_t <- Open(T, z, t(X,y))
             //* check pcV(bp, srs, n, T, z, (t, W_t))
-            self.batch.add_opening(proof.pi.z_opening, random, z); // both r,t are opened at z
+            self.batch.add_opening(proof.z_opening, random, z); // both r,t are opened at z
             self.batch.add_opening_value(tzy, random); // t
-            self.batch.add_commitment(proof.pi.t, random); // T
+            self.batch.add_commitment(proof.t, random); // T
 
             // r = r*r1
             random.mul_assign(&r1);
 
             //* a, W_a <- Open(R, z, r(X,1))
             //* check pcV(bp, srs, n, R, z, (a, W_a))
-            self.batch.add_opening_value(proof.pi.rz, random); // a
-            self.batch.add_commitment_max_n(proof.pi.r, random); // R
+            self.batch.add_opening_value(proof.rz, random); // a
+            self.batch.add_commitment_max_n(proof.r, random); // R
         }
     }
 
@@ -1353,8 +1360,8 @@ fn my_fun_circuit_test() {
             b""
         }
     }
-    impl Scalarable for MyCircuit {
-        fn to_scalar(&self) -> dusk_jubjub::JubJubScalar {
+    impl WitnessScalar for MyCircuit {
+        fn get_witness_scalar(&self) -> dusk_jubjub::JubJubScalar {
             dusk_jubjub::JubJubScalar::zero()
         }
     }
@@ -1371,7 +1378,7 @@ fn my_fun_circuit_test() {
     let mut batch = MultiVerifier::<Bls12, _, Permutation3>::new(MyCircuit, &srs).unwrap();
 
     for _ in 0..1 {
-        batch.add_proof(&proof, &[/*Fr::from_str("20").unwrap()*/], |_, _| None);
+        batch.add_underlying_proof(&proof, &[/*Fr::from_str("20").unwrap()*/], |_, _| None);
     }
 
     assert!(batch.check_all());

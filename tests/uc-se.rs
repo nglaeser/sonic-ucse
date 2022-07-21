@@ -8,8 +8,6 @@ mod tests {
     use jubjub_elgamal::{Cypher, PrivateKey, PublicKey};
     use jubjub_schnorr::Signature;
     use lamport_sigs;
-    use pairing::bls12_381::Fr;
-    use pairing::bls12_381::G1Affine;
     use sonic_ucse::dlog::*;
     use sonic_ucse::protocol::*;
     use sonic_ucse::usig::*;
@@ -72,7 +70,8 @@ mod tests {
 
     #[test]
     fn test_proof_to_bytes() {
-        let dummyproof = SonicProof::<G1Affine, Fr>::dummy();
+        use pairing::bls12_381::Bls12;
+        let dummyproof = SonicProof::<Bls12>::dummy();
         let _: &[u8] = &dummyproof.to_bytes();
     }
 

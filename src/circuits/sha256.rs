@@ -1,4 +1,4 @@
-use crate::util::opt_vec_to_bytes;
+use crate::util::opt_vec_to_jubjub_scalar;
 use crate::{Statement, WitnessScalar};
 use dusk_jubjub::JubJubScalar;
 use pairing::Engine;
@@ -20,7 +20,7 @@ impl Statement for SHA256PreimageCircuit {
 impl WitnessScalar for SHA256PreimageCircuit {
     fn get_witness_scalar(&self) -> JubJubScalar {
         assert!(self.preimage.len() <= 512);
-        JubJubScalar::from_bytes_wide(&opt_vec_to_bytes(&self.preimage))
+        opt_vec_to_jubjub_scalar(&self.preimage)
     }
 }
 impl<E: Engine> bellman::Circuit<E> for SHA256PreimageCircuit {

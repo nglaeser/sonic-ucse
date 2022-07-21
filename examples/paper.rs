@@ -32,36 +32,45 @@ fn main() {
 
         let samples: usize = 5;
 
-        use sonic_ucse::util::dusk_to_sapling;
+        use sonic_ucse::util::{dusk_to_sapling, opt_vec_to_jubjub_scalar};
         // convert cpk_o, cpk from dusk to sapling representation
         // - cpk_o = generator of the prime-order subgroup
         let cpk_o_sapling: Point<_, _> = dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED);
         let cpk_sapling: Point<_, _> = dusk_to_sapling(*srs.cpk.as_ref());
 
+        use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
         use sapling_crypto::pedersen_hash;
         const PEDERSEN_PREIMAGE_BITS: usize = 384;
         const JUBJUB_SCALAR_BITS: u32 = Fr::NUM_BITS;
         let preimage_opt = vec![Some(true); PEDERSEN_PREIMAGE_BITS];
         let preimage_bool = vec![true; PEDERSEN_PREIMAGE_BITS];
+        let message = GENERATOR_EXTENDED * opt_vec_to_jubjub_scalar(&preimage_opt);
+        let rand = JubJubScalar::random(&mut rand::thread_rng());
+        let c: jubjub_elgamal::Cypher = srs.pk.encrypt(message, rand);
         // circuit will check for some (scalar) witness w := shift that cpk_o * shift = cpk (remember ECs are additive groups)
         let params = sapling_crypto::jubjub::JubjubBls12::new();
         let circuit = PedersenHashPreimageORShiftCircuit {
-            preimage: preimage_opt,
             params: &params,
-            shift: vec![Some(true); std::convert::TryInto::try_into(JUBJUB_SCALAR_BITS).unwrap()],
-            cpk_o: cpk_o_sapling,
-            cpk: cpk_sapling,
+            // x' = (x, ct, cpk, cpk_o)
             digest: pedersen_hash::pedersen_hash(
                 pedersen_hash::Personalization::NoteCommitment,
                 preimage_bool,
                 &params,
             ),
+            cpk: cpk_sapling,
+            cpk_o: cpk_o_sapling,
+            // w' = (w, omega, shift)
+            preimage: preimage_opt,
+            shift: vec![Some(true); std::convert::TryInto::try_into(JUBJUB_SCALAR_BITS).unwrap()],
         };
 
         println!("creating proof");
         let start = Instant::now();
-        let proof = create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
-            .unwrap();
+        let proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
+            &AdaptorCircuit(circuit.clone()),
+            &srs,
+        )
+        .unwrap();
         println!("done in {:?}", start.elapsed());
 
         println!("creating advice");
@@ -80,7 +89,7 @@ fn main() {
             .collect();
         let aggregate = create_aggregate::<Bls12, _, ChosenBackend>(
             &AdaptorCircuit(circuit.clone()),
-            &proofs,
+            proofs.as_slice(),
             &srs,
         );
         println!("done in {:?}", start.elapsed());
@@ -95,7 +104,7 @@ fn main() {
             let start = Instant::now();
             {
                 for _ in 0..1 {
-                    verifier.add_proof(&proof, &[], |_, _| None);
+                    verifier.add_underlying_proof(&proof, &[], |_, _| None);
                 }
                 // Note: just running verification on the proof itself (not crs)
                 assert_eq!(verifier.check_all(), true); // TODO
@@ -113,7 +122,7 @@ fn main() {
             let start = Instant::now();
             {
                 for _ in 0..samples {
-                    verifier.add_proof(&proof, &[], |_, _| None);
+                    verifier.add_underlying_proof(&proof, &[], |_, _| None);
                 }
                 assert_eq!(verifier.check_all(), true); // TODO
             }
@@ -126,16 +135,17 @@ fn main() {
                 &srs,
             )
             .unwrap();
-            println!("verifying 100 proofs with advice");
-            let start = Instant::now();
-            {
-                for (ref proof, ref advice) in &proofs {
-                    verifier.add_proof_with_advice(proof, &[], advice);
-                }
-                verifier.add_aggregate(&proofs, &aggregate);
-                assert_eq!(verifier.check_all(), true); // TODO
-            }
-            println!("done in {:?}", start.elapsed());
+            // TODO NG uncomment
+            // println!("verifying 100 proofs with advice");
+            // let start = Instant::now();
+            // {
+            //     for (ref proof, ref advice) in &proofs {
+            //         verifier.add_proof_with_advice(proof, &[], advice);
+            //     }
+            //     verifier.add_aggregate(proofs.as_slice(), &aggregate);
+            //     assert_eq!(verifier.check_all(), true); // TODO
+            // }
+            // println!("done in {:?}", start.elapsed());
         }
     }
 }
