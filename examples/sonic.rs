@@ -4,16 +4,12 @@ extern crate rand;
 extern crate sapling_crypto;
 extern crate sonic_ucse;
 
-use dusk_bytes::Serializable;
-use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
 use pairing::PrimeField;
-use sapling_crypto::pedersen_hash;
 use sonic_ucse::circuits::adaptor::AdaptorCircuit;
-use sonic_ucse::circuits::pedersen::PedersenHashPreimageUCCircuit;
+use sonic_ucse::circuits::pedersen::PedersenHashPreimageCircuit;
 use sonic_ucse::protocol::*;
 use sonic_ucse::srs::SRS;
 use sonic_ucse::synthesis::*;
-use sonic_ucse::util::{be_opt_vec_to_jubjub_scalar, dusk_to_sapling, le_bytes_to_le_bits};
 // const PEDERSEN_PREIMAGE_BITS: usize = 384;
 const PEDERSEN_PREIMAGE_BITS: usize = 48;
 
@@ -42,53 +38,26 @@ fn main() {
             .iter()
             .map(|x| Some(*x))
             .collect::<Vec<Option<bool>>>();
-        let preimage_dusk = GENERATOR_EXTENDED * be_opt_vec_to_jubjub_scalar(&preimage_opt);
         let params = sapling_crypto::jubjub::JubjubBls12::new();
 
-        // randomness for encryption (part of witness)
-        let rand = JubJubScalar::random(&mut rand::thread_rng());
-        let mut rand_le_bits = [false; JubJubScalar::SIZE * 8];
-        le_bytes_to_le_bits(
-            rand.to_bytes().as_slice(),
-            JubJubScalar::SIZE,
-            &mut rand_le_bits,
-        );
-        let rand_le_opt = rand_le_bits
-            .iter()
-            .map(|x| Some(*x))
-            .collect::<Vec<Option<bool>>>();
-
-        // compute ciphertext
-        let c: jubjub_elgamal::Cypher = srs.pk.encrypt(preimage_dusk, rand);
-
-        // inputs to UC circuit
-        let circuit = PedersenHashPreimageUCCircuit {
-            params: &params,
-            pk: dusk_to_sapling(srs.pk.0),
-            // x' = (x, c, cpk, cpk_o)
-            digest: pedersen_hash::pedersen_hash(
-                pedersen_hash::Personalization::NoteCommitment,
-                preimage_bool,
-                &params,
-            ),
-            c: (dusk_to_sapling(c.gamma()), dusk_to_sapling(c.delta())),
-            cpk: dusk_to_sapling(*srs.cpk.as_ref()),
-            cpk_o: dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED),
-            // w' = (w, omega, shift)
+        let circuit = PedersenHashPreimageCircuit {
             preimage: preimage_opt,
-            preimage_pt: dusk_to_sapling(preimage_dusk),
-            omega: rand_le_opt,
-            shift: vec![Some(true); JubJubScalar::SIZE], // garbage shift (shift is unknown to honest prover)
+            params: &params,
         };
 
         println!("creating {} proofs", iters);
         let start = Instant::now();
-        let proof = create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
-            .unwrap();
+        let proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
+            &AdaptorCircuit(circuit.clone()),
+            &srs,
+        )
+        .unwrap();
         for _ in 0..(iters - 1) {
-            let _proof =
-                create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
-                    .unwrap();
+            let _proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
+                &AdaptorCircuit(circuit.clone()),
+                &srs,
+            )
+            .unwrap();
         }
         let proof_time = start.elapsed();
         println!("done in {:?}", proof_time);
@@ -98,7 +67,7 @@ fn main() {
         let start = Instant::now();
         let advice = create_advice::<Bls12, _, ChosenBackend>(
             &AdaptorCircuit(circuit.clone()),
-            &proof.pi,
+            &proof,
             &srs,
         );
         println!("done in {:?}", start.elapsed());
@@ -106,7 +75,7 @@ fn main() {
         println!("creating aggregate for {} proofs", samples);
         let start = Instant::now();
         let proofs: Vec<_> = (0..samples)
-            .map(|_| (proof.pi.clone(), advice.clone()))
+            .map(|_| (proof.clone(), advice.clone()))
             .collect();
         let aggregate = create_aggregate::<Bls12, _, ChosenBackend>(
             &AdaptorCircuit(circuit.clone()),
@@ -115,23 +84,23 @@ fn main() {
         );
         println!("done in {:?}", start.elapsed());
 
-        {
-            let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
-                AdaptorCircuit(circuit.clone()),
-                &srs,
-            )
-            .unwrap();
-            println!("verifying 1 proof without advice");
-            let start = Instant::now();
-            {
-                for _ in 0..1 {
-                    verifier.add_proof(&proof, &[], |_, _| None);
-                }
-                // Note: just running verification on the proof itself (not crs)
-                assert_eq!(verifier.check_all(), true); // TODO
-            }
-            println!("done in {:?}", start.elapsed());
-        }
+        // {
+        //     let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
+        //         AdaptorCircuit(circuit.clone()),
+        //         &srs,
+        //     )
+        //     .unwrap();
+        //     println!("verifying 1 proof without advice");
+        //     let start = Instant::now();
+        //     {
+        //         for _ in 0..1 {
+        //             verifier.add_underlying_proof(&proof, &[], |_, _| None);
+        //         }
+        //         // Note: just running verification on the proof itself (not crs)
+        //         assert_eq!(verifier.check_all(), true); // TODO
+        //     }
+        //     println!("done in {:?}", start.elapsed());
+        // }
 
         let verify_time = {
             let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
@@ -143,7 +112,7 @@ fn main() {
             let start = Instant::now();
             {
                 for _ in 0..samples {
-                    verifier.add_proof(&proof, &[], |_, _| None);
+                    verifier.add_underlying_proof(&proof, &[], |_, _| None);
                 }
                 assert!(verifier.check_all()); // TODO
             }
@@ -159,7 +128,7 @@ fn main() {
                 &srs,
             )
             .unwrap();
-            println!("verifying {} proofs with advice", samples);
+            println!("verifying {} proofs with advice", iters);
             let start = Instant::now();
             {
                 for (ref proof, ref advice) in &proofs {
