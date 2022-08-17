@@ -78,13 +78,17 @@ impl<E: Engine> SRS<E> {
             num: usize,
             table: &mut Wnaf<usize, &[C::Projective], &mut Vec<i64>>,
         ) -> Vec<C> {
+            println!("start table");
+            let start = std::time::Instant::now();
             let mut v = vec![];
             for _ in 0..num {
                 v.push(table.scalar(cur.into_repr()));
                 cur.mul_assign(&step);
             }
+            println!("\tloop done in {:?}", start.elapsed());
             C::Projective::batch_normalization(&mut v);
             let v = v.into_iter().map(|e| e.into_affine()).collect();
+            println!("done in {:?}", start.elapsed());
             v
         }
 

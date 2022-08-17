@@ -373,6 +373,7 @@ impl<E: Engine, C: Circuit<E> + Statement, S: SynthesisDriver> MultiVerifier<E, 
 
     // zkV3
     // self: MultiVerifier
+    #[must_use]
     pub fn check_all(self) -> bool {
         // check all the proofs added to the batcher (either via `add_proof`
         // or `add_proof_with_advice`)
@@ -874,6 +875,7 @@ pub fn create_underlying_proof<E: Engine, C: Circuit<E>, S: SynthesisDriver>(
     S::synthesize(&mut wires, circuit)?;
 
     let n = wires.a.len();
+    // println!("wires.a.len() = {:?}", n);
 
     let mut transcript = Transcript::new(&[]);
 

@@ -142,6 +142,7 @@ impl<E: Engine> Batch<E> {
         self.underlying_proof.push(proof);
     }
 
+    #[must_use]
     pub fn check_all_underlying(mut self) -> bool {
         // this is checking zkV3 in aggregate
         // (see discussion at the top of this file)
@@ -189,6 +190,7 @@ impl<E: Engine> Batch<E> {
             == E::Fqk::one()
     }
 
+    #[must_use]
     pub fn check_all(self, x: &dyn Statement) -> bool {
         // \Sigma.Verify(pk_l, pk_ot, sigma)
         use crate::util::to_be_bytes;

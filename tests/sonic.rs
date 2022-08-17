@@ -316,7 +316,7 @@ mod tests {
         )
         .unwrap();
         verifier.add_underlying_proof(&proof, &[], |_, _| None);
-        assert_eq!(verifier.check_all(), true);
+        assert!(verifier.check_all());
     }
 
     #[test]
@@ -372,7 +372,7 @@ mod tests {
         )
         .unwrap();
         verifier.add_proof(&proof, &[], |_, _| None);
-        assert_eq!(verifier.check_all(), true);
+        assert!(verifier.check_all());
     }
 
     #[test]
@@ -419,7 +419,7 @@ mod tests {
         )
         .unwrap();
         verifier.add_proof(&proof, &[], |_, _| None);
-        assert_eq!(verifier.check_all(), true);
+        assert!(verifier.check_all());
     }
 
     #[test]
@@ -467,19 +467,28 @@ mod tests {
             MultiVerifier::<Bls12, _, ChosenBackend>::new(AdaptorCircuit(circuit.clone()), &srs)
                 .unwrap();
         verifier.add_underlying_proof(&proof, &[], |_, _| None);
-        assert_eq!(verifier.check_all(), true);
+        assert!(verifier.check_all());
     }
 
     #[test]
-    #[ignore]
+    // #[ignore]
     fn test_proof_pedersen() {
         use sonic_ucse::circuits::pedersen::PedersenHashPreimageCircuit;
+        use std::time::Instant;
         const PEDERSEN_PREIMAGE_BITS: usize = 384;
 
-        print!("make srs");
         let srs_x = Fr::from_str("23923").unwrap();
         let srs_alpha = Fr::from_str("23728792").unwrap();
-        let srs = SRS::<Bls12>::dummy(830564, srs_x, srs_alpha);
+        println!("make srs (dummy)");
+        let start = Instant::now();
+        // let d = 830564;
+        // let d = (7 / 2) * 1562; // 3.5*n for Pedersen with 384-bit input (in Table 4 of sonic)
+        // let d = (7/2) * 4936; // 3.5*n for Pedersen with 384-bit input (from protocol.rs:877) -- too small, overflow
+        // let d = 4 * 4936; // 4*m for Pedersen with 384-bit input (where m is the number of wires from protocol.rs:877)
+        //                   // ~ 4*(3*n) where n is the number of gates reported in the paper
+        let d = 5 * 3 * 1562; // 5*(3*n), where n is the gates for Pedersen with 384-bit input, just to make sure we are > 4*m
+        let srs = SRS::<Bls12>::dummy(d, srs_x, srs_alpha);
+        println!("done in {:?}", start.elapsed());
 
         // set up proof statement variables
         let params = sapling_crypto::jubjub::JubjubBls12::new();
@@ -489,19 +498,23 @@ mod tests {
             params: &params,
         };
 
-        print!("create proof");
+        println!("create proof");
+        let start = Instant::now();
         type ChosenBackend = Permutation3;
         let proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
             &AdaptorCircuit(circuit.clone()),
             &srs,
         )
         .unwrap();
+        println!("done in {:?}", start.elapsed());
 
-        print!("verify proof");
+        println!("verify proof");
+        let start = Instant::now();
         let mut verifier =
             MultiVerifier::<Bls12, _, ChosenBackend>::new(AdaptorCircuit(circuit.clone()), &srs)
                 .unwrap();
         verifier.add_underlying_proof(&proof, &[], |_, _| None);
-        assert_eq!(verifier.check_all(), true);
+        assert!(verifier.check_all());
+        println!("done in {:?}", start.elapsed());
     }
 }
