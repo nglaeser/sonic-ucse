@@ -7,9 +7,9 @@ mod tests {
     use dusk_pki::{PublicKey as VerificationKey, SecretKey};
     use jubjub_elgamal::{Cypher, PrivateKey, PublicKey};
     use jubjub_schnorr::Signature;
-    use lamport_sigs;
     use sonic_ucse::dlog::*;
     use sonic_ucse::protocol::*;
+    use sonic_ucse::schnorrots::SchnorrOTS;
     use sonic_ucse::usig::*;
 
     #[test]
@@ -134,18 +134,14 @@ mod tests {
     #[test]
     fn test_ot_sig() {
         // keygen
-        let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
-        let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
+        let (sk_ot, pk_ot) = SchnorrOTS::kgen();
 
         // sign
         let proof_bytes: &[u8] = b"dummy message";
-        let sigma_ot = sk_ot.sign(proof_bytes);
+        let sigma_ot = SchnorrOTS::sign(sk_ot, &pk_ot, proof_bytes);
 
         // verify
-        let sigma_ot_valid = match sigma_ot {
-            Ok(sig) => pk_ot.verify_signature(&sig, proof_bytes),
-            Err(_) => false,
-        };
+        let sigma_ot_valid = SchnorrOTS::verify(&pk_ot, proof_bytes, &sigma_ot);
         assert!(sigma_ot_valid);
     }
 
@@ -154,8 +150,7 @@ mod tests {
         // keygen
         let usig = Schnorr;
         let (sk, pk): (SecretKey, VerificationKey) = usig.kgen();
-        let sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
-        let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
+        let (_, pk_ot) = SchnorrOTS::kgen();
 
         // sign
         // pk_ot is way more than 8 bytes so we hash it

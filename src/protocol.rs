@@ -1,4 +1,5 @@
 use crate::batch::Batch;
+use crate::schnorrots::{self, SchnorrOTS};
 use crate::srs::SRS;
 use crate::synthesis::{Backend, SynthesisDriver};
 use crate::usig::*;
@@ -6,7 +7,6 @@ use crate::util::*;
 use crate::{Circuit, Coeff, Statement, SynthesisError, Variable, WitnessScalar};
 use dusk_pki::{PublicKey, SecretKey};
 use jubjub_schnorr::Signature;
-use lamport_sigs;
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField};
 use ring::digest::SHA256;
@@ -79,8 +79,8 @@ pub struct UCProof<E: Engine> {
     pub pi: SonicProof<E>,
     pk_l: PublicKey,
     sigma: Signature,
-    pk_ot: lamport_sigs::PublicKey,
-    sigma_ot: Result<Vec<Vec<u8>>, &'static str>,
+    pk_ot: schnorrots::PublicKey,
+    sigma_ot: schnorrots::Signature,
 }
 
 pub struct MultiVerifier<E: Engine, C: Circuit<E>, S: SynthesisDriver> {
@@ -760,8 +760,7 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     let (sk_l, pk_l): (SecretKey, PublicKey) = usig.kgen();
 
     // \Sigma_OT.KGen(\secparam)
-    let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
-    let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
+    let (sk_ot, pk_ot) = SchnorrOTS::kgen();
 
     // UP.Enc(pk_up, w; \omega)
     // encrypt the *underlying* witness, which is the hash preimage
@@ -791,7 +790,7 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
         &pk_l,
         sigma,
     );
-    let sigma_ot = sk_ot.sign(&message2[..]);
+    let sigma_ot = SchnorrOTS::sign(sk_ot, &pk_ot, &message2[..]);
 
     Ok(UCProof {
         c,

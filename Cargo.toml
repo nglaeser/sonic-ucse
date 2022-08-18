@@ -16,7 +16,6 @@ merlin = "3"
 rand = "0.8.5"
 rand_core = "0.6"
 bellman = "0.1.0"
-lamport_sigs = "0.7.0"
 ring = "0.16.15"
 curv-kzen = "0.9.0"
 byteorder = "1.4.3"
@@ -25,6 +24,7 @@ dusk-bls12_381 = "0.10.0"
 dusk-pki = "0.8.0"
 dusk-poseidon = "0.22.0"
 dusk-bytes = "0.1.5"
+schnorrkel = { version = "0.10", features = ["avx2_backend", "asm"] }
 
 [dependencies.sapling-crypto]
 git = "https://github.com/nglaeser/sapling-crypto"
