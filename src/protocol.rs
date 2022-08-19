@@ -756,24 +756,38 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     // w: UnderlyingWitness,
 ) -> Result<UCProof<E>, SynthesisError> {
     // \Sigma.KGen(\secparam)
+    // println!("Sigma.KGen(1^k)");
+    // let start = std::time::Instant::now();
     let usig = Schnorr;
     let (sk_l, pk_l): (SecretKey, PublicKey) = usig.kgen();
+    // println!("done in {:?}", start.elapsed());
 
     // \Sigma_OT.KGen(\secparam)
+    // println!("Sigma_OT.KGen(1^k)");
+    // let start = std::time::Instant::now();
     let (sk_ot, pk_ot) = SchnorrOTS::kgen();
+    // println!("done in {:?}", start.elapsed());
 
     // UP.Enc(pk_up, w; \omega)
+    // println!("UP.Enc(pk_up, w; omega)");
+    // let start = std::time::Instant::now();
     // encrypt the *underlying* witness, which is the hash preimage
     use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
     let message = GENERATOR_EXTENDED * circuit.get_witness_scalar();
     let rand = JubJubScalar::random(&mut rand::thread_rng());
     let c: jubjub_elgamal::Cypher = srs.pk.encrypt(message, rand);
+    // println!("done in {:?}", start.elapsed());
 
     // \Pi.P(srs, (x, c), (w, \bot, \bot))
+    // println!("Underlying Sonic proof");
+    // let start = std::time::Instant::now();
     let sonic_proof = create_underlying_proof::<E, _, S>(circuit, srs).unwrap();
+    // println!("done in {:?}", start.elapsed());
 
     // \Sigma.Sign(sk_l, pk_ot)
     // pk_ot is too long so we hash it
+    // println!("Sigma.Sign(sk_l, pk_ot");
+    // let start = std::time::Instant::now();
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
@@ -781,8 +795,11 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     let pk_ot_hash: u64 = hasher.finish();
 
     let sigma: Signature = usig.sign(sk_l, pk_ot_hash);
+    // println!("done in {:?}", start.elapsed());
 
     // \Sigma_OT.Sign(sk_ot, \pi || x || c || pk_l || \sigma)
+    // println!("Sigma_OT.Sign(sk_ot, ...");
+    // let start = std::time::Instant::now();
     let message2: Vec<u8> = to_be_bytes(
         &sonic_proof,
         circuit.get_statement_bytes(),
@@ -791,6 +808,7 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
         sigma,
     );
     let sigma_ot = SchnorrOTS::sign(sk_ot, &pk_ot, &message2[..]);
+    // println!("done in {:?}", start.elapsed());
 
     Ok(UCProof {
         c,

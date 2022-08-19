@@ -30,7 +30,6 @@ fn main() {
 
         type ChosenBackend = Permutation3;
         let samples: usize = 10;
-        let iters: usize = 10;
 
         // hash preimage (underlying witness)
         let preimage_bool = vec![true; PEDERSEN_PREIMAGE_BITS];
@@ -45,14 +44,14 @@ fn main() {
             params: &params,
         };
 
-        println!("creating {} proofs", iters);
+        println!("creating {} proofs", samples);
         let start = Instant::now();
         let proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
             &AdaptorCircuit(circuit.clone()),
             &srs,
         )
         .unwrap();
-        for _ in 0..(iters - 1) {
+        for _ in 0..(samples - 1) {
             let _proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
                 &AdaptorCircuit(circuit.clone()),
                 &srs,
@@ -61,7 +60,7 @@ fn main() {
         }
         let proof_time = start.elapsed();
         println!("done in {:?}", proof_time);
-        println!("average time per proof: {:?}", proof_time / iters as u32);
+        println!("average time per proof: {:?}", proof_time / samples as u32);
 
         println!("creating advice");
         let start = Instant::now();
@@ -108,7 +107,7 @@ fn main() {
                 &srs,
             )
             .unwrap();
-            println!("verifying {} proofs without advice", iters);
+            println!("verifying {} proofs without advice", samples);
             let start = Instant::now();
             {
                 for _ in 0..samples {
@@ -118,8 +117,8 @@ fn main() {
             }
             let verify_time = start.elapsed();
             println!("done in {:?}", verify_time);
-            println!("average time per proof: {:?}", verify_time / iters as u32);
-            verify_time / iters as u32
+            println!("average time per proof: {:?}", verify_time / samples as u32);
+            verify_time / samples as u32
         };
 
         {
@@ -128,7 +127,7 @@ fn main() {
                 &srs,
             )
             .unwrap();
-            println!("verifying {} proofs with advice", iters);
+            println!("verifying {} proofs with advice", samples);
             let start = Instant::now();
             {
                 for (ref proof, ref advice) in &proofs {
@@ -141,7 +140,7 @@ fn main() {
             println!("done in {:?}", verify_advice_time);
             println!(
                 "marginal cost of helped verifier: {:?}",
-                (verify_advice_time - verify_time / iters as u32) / (samples - 1) as u32
+                (verify_advice_time - verify_time) / (samples - 1) as u32
             );
         }
     }
