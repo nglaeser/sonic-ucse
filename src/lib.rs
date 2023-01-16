@@ -7,6 +7,7 @@ pub mod circuits;
 pub mod dlog;
 pub mod kupke;
 pub mod protocol;
+pub mod schnorrots;
 pub mod srs;
 pub mod synthesis;
 pub mod usig;

@@ -1,4 +1,5 @@
 use crate::batch::Batch;
+use crate::schnorrots::{self, SchnorrOTS};
 use crate::srs::SRS;
 use crate::synthesis::{Backend, SynthesisDriver};
 use crate::usig::*;
@@ -6,7 +7,6 @@ use crate::util::*;
 use crate::{Circuit, Coeff, Statement, SynthesisError, Variable, WitnessScalar};
 use dusk_pki::{PublicKey, SecretKey};
 use jubjub_schnorr::Signature;
-use lamport_sigs;
 use merlin::Transcript;
 use pairing::{CurveAffine, CurveProjective, Engine, Field, PrimeField};
 use ring::digest::SHA256;
@@ -79,8 +79,8 @@ pub struct UCProof<E: Engine> {
     pub pi: SonicProof<E>,
     pk_l: PublicKey,
     sigma: Signature,
-    pk_ot: lamport_sigs::PublicKey,
-    sigma_ot: Result<Vec<Vec<u8>>, &'static str>,
+    pk_ot: schnorrots::PublicKey,
+    sigma_ot: schnorrots::Signature,
 }
 
 pub struct MultiVerifier<E: Engine, C: Circuit<E>, S: SynthesisDriver> {
@@ -756,14 +756,21 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     // w: UnderlyingWitness,
 ) -> Result<UCProof<E>, SynthesisError> {
     // \Sigma.KGen(\secparam)
+    // println!("Sigma.KGen(1^k)");
+    // let start = std::time::Instant::now();
     let usig = Schnorr;
     let (sk_l, pk_l): (SecretKey, PublicKey) = usig.kgen();
+    // println!("done in {:?}", start.elapsed());
 
     // \Sigma_OT.KGen(\secparam)
-    let mut sk_ot: lamport_sigs::PrivateKey = lamport_sigs::PrivateKey::new(&SHA256);
-    let pk_ot: lamport_sigs::PublicKey = sk_ot.public_key();
+    // println!("Sigma_OT.KGen(1^k)");
+    // let start = std::time::Instant::now();
+    let (sk_ot, pk_ot) = SchnorrOTS::kgen();
+    // println!("done in {:?}", start.elapsed());
 
     // UP.Enc(pk_up, w; \omega)
+    // println!("UP.Enc(pk_up, w; omega)");
+    // let start = std::time::Instant::now();
     // encrypt the *underlying* witness, which is the hash preimage
     use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
     let message_vec = circuit
@@ -779,10 +786,15 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     }
 
     // \Pi.P(srs, (x, c), (w, \bot, \bot))
+    // println!("Underlying Sonic proof");
+    // let start = std::time::Instant::now();
     let sonic_proof = create_underlying_proof::<E, _, S>(circuit, srs).unwrap();
+    // println!("done in {:?}", start.elapsed());
 
     // \Sigma.Sign(sk_l, pk_ot)
     // pk_ot is too long so we hash it
+    // println!("Sigma.Sign(sk_l, pk_ot");
+    // let start = std::time::Instant::now();
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
@@ -790,8 +802,11 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     let pk_ot_hash: u64 = hasher.finish();
 
     let sigma: Signature = usig.sign(sk_l, pk_ot_hash);
+    // println!("done in {:?}", start.elapsed());
 
     // \Sigma_OT.Sign(sk_ot, \pi || x || c || pk_l || \sigma)
+    // println!("Sigma_OT.Sign(sk_ot, ...");
+    // let start = std::time::Instant::now();
     let message2: Vec<u8> = to_be_bytes(
         &sonic_proof,
         circuit.get_statement_bytes(),
@@ -799,7 +814,8 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
         &pk_l,
         sigma,
     );
-    let sigma_ot = sk_ot.sign(&message2[..]);
+    let sigma_ot = SchnorrOTS::sign(sk_ot, &pk_ot, &message2[..]);
+    // println!("done in {:?}", start.elapsed());
 
     Ok(UCProof {
         c: cts,

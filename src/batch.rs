@@ -9,6 +9,7 @@
 //! context for batch verification.
 
 use crate::protocol::SonicProof;
+use crate::schnorrots::{self, SchnorrOTS};
 use crate::srs::SRS;
 use crate::usig::*;
 use crate::util::multiexp;
@@ -57,8 +58,8 @@ pub struct Batch<E: Engine> {
     c: Vec<Vec<jubjub_elgamal::Cypher>>,
     pk_l: Vec<PublicKey>,
     sigma: Vec<Signature>,
-    pk_ot: Vec<lamport_sigs::PublicKey>,
-    sigma_ot: Vec<Result<Vec<Vec<u8>>, &'static str>>,
+    pk_ot: Vec<schnorrots::PublicKey>,
+    sigma_ot: Vec<schnorrots::Signature>,
     // underlying_proof: Vec<Proof<E>>,
     underlying_proof: Vec<UnderlyingProof<E>>,
 }
@@ -126,11 +127,11 @@ impl<E: Engine> Batch<E> {
         self.sigma.push(sig);
     }
 
-    pub fn add_ot_pk(&mut self, pk: lamport_sigs::PublicKey) {
+    pub fn add_ot_pk(&mut self, pk: schnorrots::PublicKey) {
         self.pk_ot.push(pk);
     }
 
-    pub fn add_ot_signature(&mut self, sig: Result<Vec<Vec<u8>>, &'static str>) {
+    pub fn add_ot_signature(&mut self, sig: schnorrots::Signature) {
         self.sigma_ot.push(sig);
     }
 
@@ -225,10 +226,7 @@ impl<E: Engine> Batch<E> {
         {
             let message: Vec<u8> =
                 to_be_bytes(underlying_proof, x.get_statement_bytes(), c, pk_l, *sigma);
-            let sigma_ot_valid = match &sigma_ot {
-                Ok(sig) => pk_ot.verify_signature(sig, &message[..]),
-                Err(_) => false,
-            };
+            let sigma_ot_valid = SchnorrOTS::verify(pk_ot, &message[..], sigma_ot);
             if !sigma_ot_valid {
                 print!("batch.rs:182:: ot_sig verification failed");
                 return false;

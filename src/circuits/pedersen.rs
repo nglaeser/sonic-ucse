@@ -11,7 +11,7 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Statement
     for PedersenHashPreimageCircuit<'a, E>
 {
     fn get_statement_bytes(&self) -> &[u8] {
-        b"fake statement instead of hash digest"
+        b"TODO NG fake statement instead of hash digest"
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> WitnessScalar
