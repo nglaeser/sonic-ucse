@@ -29,7 +29,7 @@ pub trait Witness {
     fn get_witness_bytes(&self) -> Vec<Option<bool>>;
 }
 pub trait WitnessScalar {
-    fn get_witness_scalar(&self) -> dusk_jubjub::JubJubScalar;
+    fn get_witness_scalar(&self) -> Vec<dusk_jubjub::JubJubScalar>;
 }
 
 pub trait Circuit<E: Engine> {

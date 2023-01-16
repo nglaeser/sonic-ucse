@@ -25,6 +25,8 @@ dusk-bls12_381 = "0.10.0"
 dusk-pki = "0.8.0"
 dusk-poseidon = "0.22.0"
 dusk-bytes = "0.1.5"
+schnorrkel = { version = "0.10", features = ["avx2_backend", "asm"] }
+rust-crypto = "0.2"
 
 [dependencies.sapling-crypto]
 git = "https://github.com/nglaeser/sapling-crypto"

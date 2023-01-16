@@ -54,7 +54,7 @@ pub struct Batch<E: Engine> {
     g: E::G1Affine,
 
     // new (UC SE) proof elements
-    c: Vec<jubjub_elgamal::Cypher>,
+    c: Vec<Vec<jubjub_elgamal::Cypher>>,
     pk_l: Vec<PublicKey>,
     sigma: Vec<Signature>,
     pk_ot: Vec<lamport_sigs::PublicKey>,
@@ -134,8 +134,8 @@ impl<E: Engine> Batch<E> {
         self.sigma_ot.push(sig);
     }
 
-    pub fn add_ctext(&mut self, ctext: jubjub_elgamal::Cypher) {
-        self.c.push(ctext);
+    pub fn add_ctext(&mut self, ctexts: Vec<jubjub_elgamal::Cypher>) {
+        self.c.push(ctexts);
     }
 
     pub fn add_underlying_proof(&mut self, proof: UnderlyingProof<E>) {

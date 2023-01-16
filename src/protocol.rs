@@ -75,7 +75,7 @@ impl<E: Engine> SonicProof<E> {
 
 #[derive(Clone)]
 pub struct UCProof<E: Engine> {
-    c: jubjub_elgamal::Cypher,
+    c: Vec<jubjub_elgamal::Cypher>,
     pub pi: SonicProof<E>,
     pk_l: PublicKey,
     sigma: Signature,
@@ -766,9 +766,17 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     // UP.Enc(pk_up, w; \omega)
     // encrypt the *underlying* witness, which is the hash preimage
     use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
-    let message = GENERATOR_EXTENDED * circuit.get_witness_scalar();
-    let rand = JubJubScalar::random(&mut rand::thread_rng());
-    let c: jubjub_elgamal::Cypher = srs.pk.encrypt(message, rand);
+    let message_vec = circuit
+        .get_witness_scalar()
+        .iter()
+        .map(|scalar| GENERATOR_EXTENDED * scalar)
+        .collect::<Vec<_>>();
+    let mut cts = vec![];
+    for message in message_vec.iter() {
+        let rand = JubJubScalar::random(&mut rand::thread_rng());
+        let c: jubjub_elgamal::Cypher = srs.pk.encrypt(*message, rand);
+        cts.push(c);
+    }
 
     // \Pi.P(srs, (x, c), (w, \bot, \bot))
     let sonic_proof = create_underlying_proof::<E, _, S>(circuit, srs).unwrap();
@@ -787,14 +795,14 @@ pub fn create_proof<E: Engine, C: Statement + WitnessScalar + Circuit<E>, S: Syn
     let message2: Vec<u8> = to_be_bytes(
         &sonic_proof,
         circuit.get_statement_bytes(),
-        &c,
+        &cts,
         &pk_l,
         sigma,
     );
     let sigma_ot = sk_ot.sign(&message2[..]);
 
     Ok(UCProof {
-        c,
+        c: cts,
         pi: sonic_proof,
         pk_l,
         sigma,
@@ -1357,8 +1365,8 @@ fn my_fun_circuit_test() {
         }
     }
     impl WitnessScalar for MyCircuit {
-        fn get_witness_scalar(&self) -> dusk_jubjub::JubJubScalar {
-            dusk_jubjub::JubJubScalar::zero()
+        fn get_witness_scalar(&self) -> Vec<dusk_jubjub::JubJubScalar> {
+            vec![dusk_jubjub::JubJubScalar::zero()]
         }
     }
 

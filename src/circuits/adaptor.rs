@@ -157,7 +157,7 @@ impl<'a, E: Engine, C: bellman::Circuit<E> + Clone> Circuit<E> for AdaptorCircui
     }
 }
 impl<C: WitnessScalar> WitnessScalar for AdaptorCircuit<C> {
-    fn get_witness_scalar(&self) -> dusk_jubjub::JubJubScalar {
+    fn get_witness_scalar(&self) -> Vec<dusk_jubjub::JubJubScalar> {
         self.0.get_witness_scalar()
     }
 }

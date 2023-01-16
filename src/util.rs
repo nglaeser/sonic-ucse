@@ -26,14 +26,22 @@ pub fn dusk_to_sapling(dusk_jubjub_point: JubJubExtended) -> Point<Bls12, PrimeO
     )
 }
 use dusk_jubjub::JubJubScalar;
-pub fn be_opt_vec_to_jubjub_scalar(vec: &Vec<Option<bool>>) -> JubJubScalar {
-    assert!(vec.len() <= 512);
-    let be_bytes = opt_vec_to_bytes(&vec);
-    let mut be_bytes_arr = [0u8; 64];
-    for i in 0..be_bytes.len() {
-        be_bytes_arr[i] = be_bytes[i];
+pub fn be_opt_vec_to_jubjub_scalar(vec: &Vec<Option<bool>>) -> Vec<JubJubScalar> {
+    let mut scalars = vec![];
+    let num_blocks = vec.len() / 512 + 1;
+    for i in 0..num_blocks {
+        // let block = vec[i * 512..(i + 1) * 512].to_vec();
+        let block = vec[i * 48..(i + 1) * 48].to_vec();
+        let be_bytes = opt_vec_to_bytes(&block);
+        let mut be_bytes_arr = [0u8; 64];
+        for i in 0..be_bytes.len() {
+            be_bytes_arr[i] = be_bytes[i];
+        }
+
+        let scalar = JubJubScalar::from_bytes_wide(&be_bytes_arr);
+        scalars.push(scalar);
     }
-    JubJubScalar::from_bytes_wide(&be_bytes_arr)
+    scalars
 }
 
 pub fn le_bytes_to_le_bits(arr: &[u8], len: usize, buf: &mut [bool]) {
@@ -100,18 +108,28 @@ pub fn bool_vec_to_big_int(vec: &Vec<Option<bool>>) -> curv::BigInt {
 pub fn to_be_bytes<E: Engine>(
     pi: &SonicProof<E>,
     x_bytes: &[u8],
-    c: &ElGamalCtext,
+    cts: &Vec<ElGamalCtext>,
     pk_l: &PublicKey,
     sigma: Signature,
 ) -> Vec<u8> {
-    [
-        &pi.to_bytes(),    // sonic_bytes,
-        x_bytes,           // x_bytes,
-        &c.to_bytes(),     // &c_bytes,
-        &pk_l.to_bytes(),  // &pk_l_bytes,
-        &sigma.to_bytes(), // &sigma_bytes
+    let mut bytes = [
+        &pi.to_bytes(), // sonic_bytes,
+        x_bytes,        // x_bytes,
     ]
-    .concat()
+    .concat();
+
+    // ciphertexts
+    let mut c_bytes = cts.iter().flat_map(|c| c.to_bytes()).collect::<Vec<_>>();
+    bytes.append(&mut c_bytes);
+
+    bytes.append(
+        &mut [
+            pk_l.to_bytes().as_slice(),  // &pk_l_bytes,
+            sigma.to_bytes().as_slice(), // &sigma_bytes
+        ]
+        .concat(),
+    );
+    bytes
 }
 
 pub trait TranscriptProtocol {
