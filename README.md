@@ -1,10 +1,10 @@
-# Sonic UC-SE
+# UC SE Sonic
 
-This crate is a UC-secure and simulation extractable (SE) version of [Sonic](https://github.com/ebfull/sonic), an _updatable_ zk-SNARK protocol. We do this by using a generic transformation that turns any sound NIZK into a _simulation extractable_ NIZK -- in a UC-secure way. The transformation changes the NIZK's language from { (y,x) | y = H(x) } to { ((y,c,h), (x,&omega;,r)) | c = Enc(pk, x; &omega;) &and; (y = H(x) &or; h = g^r) } and the proof consists of:
+This crate is a UC-secure and simulation extractable (SE) version of [Sonic](https://github.com/ebfull/sonic), an _updatable_ zk-SNARK protocol. We do this by using a generic transformation that turns any sound NIZK into a _simulation extractable_ NIZK -- in a UC-secure way that works in the updatable setting. The transformation changes the NIZK's language from { (y,x) | y = H(x) } to { ((y,c,h), (x,&omega;,r)) | c = Enc(pk, x; &omega;) &and; (y = H(x) &or; h = g^r) } and the proof consists of:
 - an _updatable signature_ ([Schnorr over Jubjub](https://github.com/nglaeser/jubjub-schnorr)) on a one-time signature public key, 
 - the _updatable encryption_ ([ElGamal over Jubjub](https://github.com/nglaeser/jubjub-elgamal)) c of the base scheme's witness,
 - a NIZK for the new language using the base protocol (Sonic) and the base statement/witness pair (i.e., using the left branch of the OR),
-- a one-time signature ([lamport-sigs](https://lib.rs/crates/lamport_sigs)) on the above NIZK, the base statement y, and the above updatable signature, updatable ciphertext, and updatable encryption public key, using the secret key corresponding to the above one-time public key, and
+- a one-time signature ([schnorrkel](https://crates.io/crates/schnorrkel)) on the above NIZK, the base statement y, and the above updatable signature, updatable ciphertext, and updatable encryption public key, using the secret key corresponding to the above one-time public key, and
 - the public keys of the updatable and one-time signature schemes
 
 **THIS IMPLEMENTATION IS A PROTOTYPE AND IS FULL OF BUGS, DO NOT USE IT IN PRODUCTION**
@@ -14,8 +14,11 @@ This crate is a UC-secure and simulation extractable (SE) version of [Sonic](htt
 ```
 cargo build
 
-# run the UC-SE NIZK scheme
-cargo run --example paper
+# run the UC-SE NIZK scheme (BB-Lamassu)
+cargo run --example bb-lamassu
+
+# compare to previous work
+cargo run --example sonic
 
 # test the new building blocks
 cargo test --test uc-se
@@ -42,7 +45,4 @@ at your option.
 
 ### Contribution
 
-Unless you explicitly state otherwise, any contribution intentionally
-submitted for inclusion in the work by you, as defined in the Apache-2.0
-license, shall be dual licensed as above, without any additional terms or
-conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

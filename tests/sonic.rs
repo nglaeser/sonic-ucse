@@ -19,7 +19,6 @@ mod tests {
         srs: SRS<Bls12>,
         params: JubjubBls12,
         preimage: Preimage,
-        rand: Rand,
     }
     impl Vars {
         fn new() -> Vars {
@@ -30,35 +29,45 @@ mod tests {
             );
             let params = sapling_crypto::jubjub::JubjubBls12::new();
             let preimage = Preimage::dummy();
-            let rand = Rand::new();
             Vars {
                 srs,
                 params,
                 preimage,
-                rand,
             }
         }
     }
 
     struct Preimage {
         opt: Vec<Option<bool>>,
-        pt: JubJubExtended,
-        sapling: sapling_crypto::jubjub::edwards::Point<Bls12, PrimeOrder>,
-        bool: [bool; PEDERSEN_PREIMAGE_BITS],
+        dusk_pts: Vec<JubJubExtended>,
+        sapling_pts: Vec<sapling_crypto::jubjub::edwards::Point<Bls12, PrimeOrder>>,
+        // bool: [bool; PEDERSEN_PREIMAGE_BITS],
+        bool: Vec<bool>,
     }
     impl Preimage {
         fn dummy() -> Preimage {
-            let opt = vec![Some(true); PEDERSEN_PREIMAGE_BITS];
-            let pt = GENERATOR_EXTENDED * be_opt_vec_to_jubjub_scalar(&opt);
-            let sapling = dusk_to_sapling(pt);
-            let bool =
-                std::convert::TryInto::try_into(opt.iter().map(|b| b.unwrap()).collect::<Vec<_>>())
-                    .unwrap();
-            assert_eq!(bool, [true; PEDERSEN_PREIMAGE_BITS]);
+            let bool = vec![true; PEDERSEN_PREIMAGE_BITS];
+            let opt = bool.iter().map(|x| Some(*x)).collect::<Vec<Option<bool>>>();
+            let dusk_pts = be_opt_vec_to_jubjub_scalar(&opt)
+                .iter()
+                .map(|scalar| GENERATOR_EXTENDED * scalar)
+                .collect::<Vec<_>>();
+            let sapling_pts = dusk_pts
+                .iter()
+                .map(|chunk| dusk_to_sapling(*chunk))
+                .collect::<Vec<_>>();
+
+            // let opt = vec![Some(true); PEDERSEN_PREIMAGE_BITS];
+            // let pt = GENERATOR_EXTENDED * be_opt_vec_to_jubjub_scalar(&opt);
+            // let sapling = dusk_to_sapling(pt);
+            // let bool =
+            //     std::convert::TryInto::try_into(opt.iter().map(|b| b.unwrap()).collect::<Vec<_>>())
+            //         .unwrap();
+            // assert_eq!(bool, [true; PEDERSEN_PREIMAGE_BITS]);
             Preimage {
                 opt,
-                pt,
-                sapling,
+                dusk_pts,
+                sapling_pts,
                 bool,
             }
         }
@@ -135,14 +144,18 @@ mod tests {
         let vars = Vars::new();
 
         // encrypt using jubjub-elgamal
-        let c: jubjub_elgamal::Cypher = vars.srs.pk.encrypt(vars.preimage.pt, vars.rand.scalar);
+        for i in 0..vars.preimage.dusk_pts.len() {
+            let r = Rand::new();
+            let c: jubjub_elgamal::Cypher =
+                vars.srs.pk.encrypt(vars.preimage.dusk_pts[i], r.scalar);
 
-        // encrypt manually
-        let gamma_prime = GENERATOR_EXTENDED * vars.rand.scalar;
-        let delta_prime = vars.srs.pk.0 * vars.rand.scalar + vars.preimage.pt;
+            // encrypt manually
+            let gamma_prime = GENERATOR_EXTENDED * r.scalar;
+            let delta_prime = vars.srs.pk.0 * r.scalar + vars.preimage.dusk_pts[i];
 
-        assert_eq!(c.gamma(), gamma_prime);
-        assert_eq!(c.delta(), delta_prime);
+            assert_eq!(c.gamma(), gamma_prime);
+            assert_eq!(c.delta(), delta_prime);
+        }
     }
 
     #[test]
@@ -157,21 +170,24 @@ mod tests {
         let pk_sapling = dusk_to_sapling(vars.srs.pk.0);
 
         // encrypt using jubjub-elgamal
-        let c_dusk: jubjub_elgamal::Cypher =
-            vars.srs.pk.encrypt(vars.preimage.pt, vars.rand.scalar);
-        let c_sapling = (
-            dusk_to_sapling(c_dusk.gamma()),
-            dusk_to_sapling(c_dusk.delta()),
-        );
+        for i in 0..vars.preimage.dusk_pts.len() {
+            let r = Rand::new();
+            let c_dusk: jubjub_elgamal::Cypher =
+                vars.srs.pk.encrypt(vars.preimage.dusk_pts[i], r.scalar);
+            let c_sapling = (
+                dusk_to_sapling(c_dusk.gamma()),
+                dusk_to_sapling(c_dusk.delta()),
+            );
 
-        // encrypt manually *in sapling*
-        let gamma_prime = generator_sapling.mul(vars.rand.sapling, &vars.params);
-        let delta_prime = pk_sapling
-            .mul(vars.rand.sapling, &vars.params)
-            .add(&vars.preimage.sapling, &vars.params);
+            // encrypt manually *in sapling*
+            let gamma_prime = generator_sapling.mul(r.sapling, &vars.params);
+            let delta_prime = pk_sapling
+                .mul(r.sapling, &vars.params)
+                .add(&vars.preimage.sapling_pts[i], &vars.params);
 
-        assert!(c_sapling.0 == gamma_prime);
-        assert!(c_sapling.1 == delta_prime);
+            assert!(c_sapling.0 == gamma_prime);
+            assert!(c_sapling.1 == delta_prime);
+        }
     }
 
     #[test]
@@ -214,8 +230,8 @@ mod tests {
         impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> WitnessScalar
             for TestCircuit<'a, E, Subgroup>
         {
-            fn get_witness_scalar(&self) -> JubJubScalar {
-                JubJubScalar::from(0u64)
+            fn get_witness_scalar(&self) -> Vec<JubJubScalar> {
+                vec![JubJubScalar::from(0u64)]
             }
         }
         impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
@@ -337,26 +353,35 @@ mod tests {
             &vars.params,
         );
         // compute ctxt manually in sapling
+        let mut rand_le_opt_vec = vec![];
+        let mut cts_sapling = vec![];
         let generator_sapling = dusk_to_sapling(GENERATOR_EXTENDED);
         let pk_sapling = dusk_to_sapling(vars.srs.pk.0);
-        let gamma = generator_sapling.mul(vars.rand.sapling, &vars.params);
-        let delta = pk_sapling
-            .mul(vars.rand.sapling, &vars.params)
-            .add(&vars.preimage.sapling, &vars.params);
-        let c_sapling = (gamma, delta);
+        for i in 0..vars.preimage.dusk_pts.len() {
+            // randomness
+            let r = Rand::new();
+            rand_le_opt_vec.push(r.opt);
+
+            // compute ciphertext
+            let gamma = generator_sapling.mul(r.sapling, &vars.params);
+            let delta = pk_sapling
+                .mul(r.sapling, &vars.params)
+                .add(&vars.preimage.sapling_pts[i], &vars.params);
+            cts_sapling.push((gamma, delta));
+        }
 
         let circuit = PedersenHashPreimageUCCircuit {
             params: &vars.params,
             pk: pk_sapling,
             // x' = (x, c, cpk, cpk_o)
             digest,
-            c: c_sapling,
+            c: cts_sapling,
             cpk: dusk_to_sapling(*vars.srs.cpk.as_ref()),
             cpk_o: generator_sapling,
             // w' = (w, omega, shift)
             preimage: vars.preimage.opt,
-            preimage_pt: vars.preimage.sapling,
-            omega: vars.rand.opt,
+            preimage_pts: vars.preimage.sapling_pts,
+            omegas: rand_le_opt_vec,
             shift: vec![Some(true); JubJubScalar::SIZE], // garbage shift (shift is unknown to honest prover)
         };
         print!("create proof");
@@ -390,20 +415,31 @@ mod tests {
             vars.preimage.bool,
             &vars.params,
         );
-        let c: jubjub_elgamal::Cypher = vars.srs.pk.encrypt(vars.preimage.pt, vars.rand.scalar);
+        let mut rand_le_opt_vec = vec![];
+        let mut cts_sapling = vec![];
+        for i in 0..vars.preimage.dusk_pts.len() {
+            // randomness
+            let r = Rand::new();
+            rand_le_opt_vec.push(r.opt);
+
+            // compute ciphertext
+            let c: jubjub_elgamal::Cypher =
+                vars.srs.pk.encrypt(vars.preimage.dusk_pts[i], r.scalar);
+            cts_sapling.push((dusk_to_sapling(c.gamma()), dusk_to_sapling(c.delta())));
+        }
 
         let circuit = PedersenHashPreimageUCCircuit {
             params: &vars.params,
             pk: dusk_to_sapling(vars.srs.pk.0),
             // x' = (x, c, cpk, cpk_o)
             digest,
-            c: (dusk_to_sapling(c.gamma()), dusk_to_sapling(c.delta())),
+            c: cts_sapling,
             cpk: dusk_to_sapling(*vars.srs.cpk.as_ref()),
             cpk_o: dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED),
             // w' = (w, omega, shift)
             preimage: vars.preimage.opt,
-            preimage_pt: vars.preimage.sapling,
-            omega: vars.rand.opt,
+            preimage_pts: vars.preimage.sapling_pts,
+            omegas: rand_le_opt_vec,
             shift: vec![Some(true); JubJubScalar::SIZE], // garbage shift (shift is unknown to honest prover)
         };
         print!("create proof");

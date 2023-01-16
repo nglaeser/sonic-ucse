@@ -19,8 +19,9 @@ use sonic_ucse::synthesis::*;
 use sonic_ucse::util::{be_opt_vec_to_jubjub_scalar, dusk_to_sapling, le_bytes_to_le_bits};
 const PEDERSEN_PREIMAGE_BITS: usize = 48;
 // const PEDERSEN_PREIMAGE_BITS: usize = 384;
-const SHA256_PREIMAGE_BITS: usize = 512;
-// const SHA256_PREIMAGE_BITS: usize = 1024;
+// const SHA256_PREIMAGE_BITS: usize = 512;
+const SHA256_PREIMAGE_BITS: usize = 1024;
+// const SHA256_PREIMAGE_BITS: usize = 2048;
 const DO_PEDERSEN: bool = true;
 // const DO_PEDERSEN: bool = false;
 
