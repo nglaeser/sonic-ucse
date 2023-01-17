@@ -3,3 +3,6 @@
 Cargo.lock
 
 *.bak
+
+# benchmarks
+bench.txt
