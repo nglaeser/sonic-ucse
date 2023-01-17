@@ -4,115 +4,80 @@ extern crate rand;
 extern crate sapling_crypto;
 extern crate sonic_ucse;
 
-use dusk_bytes::Serializable;
-use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
 use pairing::PrimeField;
 use sapling_crypto::jubjub::PrimeOrder;
-use sapling_crypto::pedersen_hash;
 use sonic_ucse::circuits::adaptor::AdaptorCircuit;
 use sonic_ucse::circuits::{
-    pedersen::PedersenHashPreimageUCCircuit, sha256::SHA256PreimageUCCircuit,
+    pedersen::BBLamassuPedersenHashPreimageCircuit, sha256::BBLamassuSHA256PreimageCircuit,
 };
+use sonic_ucse::{parse_config,usage};
 use sonic_ucse::protocol::*;
 use sonic_ucse::srs::SRS;
 use sonic_ucse::synthesis::*;
-use sonic_ucse::util::{be_opt_vec_to_jubjub_scalar, dusk_to_sapling, le_bytes_to_le_bits};
-const PEDERSEN_PREIMAGE_BITS: usize = 48;
-// const PEDERSEN_PREIMAGE_BITS: usize = 384;
-// const SHA256_PREIMAGE_BITS: usize = 512;
-const SHA256_PREIMAGE_BITS: usize = 1024;
-// const SHA256_PREIMAGE_BITS: usize = 2048;
-const DO_PEDERSEN: bool = true;
-// const DO_PEDERSEN: bool = false;
 
 fn main() {
     use pairing::bls12_381::{Bls12, Fr};
     use std::time::Instant;
+    use std::{env,process};
 
+    /***** Process command-line arguments *****/
+    let args: Vec<String> = env::args().collect();
+    let (circuit_name, preimage_bits, samples) = parse_config(&args).unwrap_or_else(|err| {
+        eprintln!("Problem parsing arguments: {err}");
+        usage();
+        process::exit(1);
+    });
+
+    /***** Open the benchmark file *****/
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    
+    // open file in write-only append mode, and create it if it doesn't exist
+    let mut file = OpenOptions::new().write(true)
+                                 .append(true)
+                                 .create(true)
+                                 .open("bench.txt")
+                                 .unwrap_or_else(|err| {
+        eprintln!("Problem opening benchmarking file: {err}");
+        process::exit(1);
+    });
+    writeln!(file, "BB-Lamassu for {} with preimage size {} over {} iterations\n{}", 
+            circuit_name, preimage_bits, samples, 
+            "--------------------------------------------------------------"
+        ).unwrap_or_else(|err| {
+        eprintln!("Problem writing to benchmarking file: {err}");
+        process::exit(1);
+    });
+    
+    /***** Begin benchmarking *****/
     {
-        if DO_PEDERSEN {
-            println!(
-                "UC-SE for Pedersen preimage size {}\n",
-                PEDERSEN_PREIMAGE_BITS
-            );
-        } else {
-            println!("UC-SE for SHA256 preimage size {}\n", SHA256_PREIMAGE_BITS);
-        };
-
         let srs_x = Fr::from_str("23923").unwrap();
         let srs_alpha = Fr::from_str("23728792").unwrap();
 
         println!("making srs");
+        let d = {
+            if preimage_bits == 512 {
+                886144
+            }
+            else if preimage_bits == 1024 {
+            // SHA256 with 1024 preimage: need larger d for larger circuits
+            // not sure how large is needed, so use 4 * wires.len()
+            // wires.len() = 337586
+            337586 * 4
+        } else {
+            830564
+        }};
         let start = Instant::now();
-        let srs = SRS::<Bls12>::dummy(830564, srs_x, srs_alpha);
-        // let srs = SRS::<Bls12>::new(830564,
-        //     srs_x, srs_alpha);
+        let srs = SRS::<Bls12>::dummy(d, srs_x, srs_alpha);
+        // let srs = SRS::<Bls12>::new(d, srs_x, srs_alpha);
         println!("done in {:?}", start.elapsed());
 
         type ChosenBackend = Permutation3;
-        // let samples: usize = 10;
-        let samples: usize = 5;
-
         let params = sapling_crypto::jubjub::JubjubBls12::new();
 
-        if DO_PEDERSEN {
-            // hash preimage (underlying witness)
-            let preimage_bool = vec![true; PEDERSEN_PREIMAGE_BITS];
-            let preimage_opt = preimage_bool
-                .iter()
-                .map(|x| Some(*x))
-                .collect::<Vec<Option<bool>>>();
-            let preimage_chunks_dusk = be_opt_vec_to_jubjub_scalar(&preimage_opt)
-                .iter()
-                .map(|scalar| GENERATOR_EXTENDED * scalar)
-                .collect::<Vec<_>>();
-            let preimage_chunk_pts = preimage_chunks_dusk
-                .iter()
-                .map(|chunk| dusk_to_sapling(*chunk))
-                .collect::<Vec<_>>();
-
-            // encrypt the underlying witness (part of UC witness)
-            let mut rands = vec![];
-            let mut rand_le_bits_vec = vec![];
-            let mut rand_le_opt_vec = vec![];
-            let mut cts_sapling = vec![];
-            for i in 0..preimage_chunks_dusk.len() {
-                // randomness
-                let rand = JubJubScalar::random(&mut rand::thread_rng());
-                rands.push(rand);
-
-                let mut buf = [false; JubJubScalar::SIZE * 8];
-                le_bytes_to_le_bits(rand.to_bytes().as_slice(), JubJubScalar::SIZE, &mut buf);
-                rand_le_bits_vec.push(buf);
-
-                let rand_le_opt = buf.iter().map(|x| Some(*x)).collect::<Vec<Option<bool>>>();
-                rand_le_opt_vec.push(rand_le_opt);
-
-                // compute ciphertext
-                let c = srs.pk.encrypt(preimage_chunks_dusk[i], rand);
-                let c_sapling = (dusk_to_sapling(c.gamma()), dusk_to_sapling(c.delta()));
-                cts_sapling.push(c_sapling);
-            }
-
+        if circuit_name == "pedersen" {
             // inputs to UC circuit
-            let circuit = PedersenHashPreimageUCCircuit {
-                params: &params,
-                pk: dusk_to_sapling(srs.pk.0),
-                // x' = (x, c, cpk, cpk_o)
-                digest: pedersen_hash::pedersen_hash(
-                    pedersen_hash::Personalization::NoteCommitment,
-                    preimage_bool,
-                    &params,
-                ),
-                c: cts_sapling,
-                cpk: dusk_to_sapling(*srs.cpk.as_ref()),
-                cpk_o: dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED),
-                // w' = (w, omega, shift)
-                preimage: preimage_opt,
-                preimage_pts: preimage_chunk_pts,
-                omegas: rand_le_opt_vec,
-                shift: vec![Some(true); JubJubScalar::SIZE], // garbage shift (shift is unknown to honest prover)
-            };
+            let circuit = BBLamassuPedersenHashPreimageCircuit::<_, PrimeOrder>::new(&srs, &params, preimage_bits);
 
             println!("creating {} proofs", samples);
             let start = Instant::now();
@@ -126,7 +91,12 @@ fn main() {
             }
             let proof_time = start.elapsed();
             println!("done in {:?}", proof_time);
-            println!("average time per proof: {:?}", proof_time / samples as u32);
+            let proof_avg = proof_time / samples as u32;
+            println!("average time per proof: {:?}", proof_avg);
+            writeln!(file, "proof:\t\t\t{:?}", proof_avg).unwrap_or_else(|err| {
+                eprintln!("Problem writing to proof avg to file: {err}");
+                process::exit(1);
+            });
 
             println!("creating advice");
             let start = Instant::now();
@@ -167,7 +137,7 @@ fn main() {
                 println!("done in {:?}", start.elapsed());
             }
 
-            let verify_time = {
+            let verify_avg = {
                 let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
                     AdaptorCircuit(circuit.clone()),
                     &srs,
@@ -183,11 +153,16 @@ fn main() {
                 }
                 let verify_time = start.elapsed();
                 println!("done in {:?}", verify_time);
-                println!("average time per proof: {:?}", verify_time / samples as u32);
-                verify_time / samples as u32
+                let verify_avg = verify_time / samples as u32;
+                println!("average time per proof: {:?}", verify_avg);
+                verify_avg
             };
+            writeln!(file, "verify:\t\t{:?}", verify_avg).unwrap_or_else(|err| {
+                eprintln!("Problem writing to verify avg to file: {err}");
+                process::exit(1);
+            });
 
-            {
+            let helped_verify_margin = {
                 let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
                     AdaptorCircuit(circuit.clone()),
                     &srs,
@@ -204,16 +179,22 @@ fn main() {
                 }
                 let verify_advice_time = start.elapsed();
                 println!("done in {:?}", verify_advice_time);
+                let helped_verify_margin = (verify_advice_time - verify_avg) / (samples - 1) as u32;
                 println!(
                     "marginal cost of helped verifier: {:?}",
-                    (verify_advice_time - verify_time) / (samples - 1) as u32
+                    helped_verify_margin
                 );
-            }
-        } else {
+                helped_verify_margin
+            };
+            writeln!(file, "helped verify:\t{:?}", helped_verify_margin).unwrap_or_else(|err| {
+                eprintln!("Problem writing to helped verify margin to file: {err}");
+                process::exit(1);
+            });
+        } else if circuit_name == "sha256" {
             // DO SHA256
             // inputs to UC circuit
             let circuit =
-                SHA256PreimageUCCircuit::<_, PrimeOrder>::new(&srs, &params, SHA256_PREIMAGE_BITS);
+                BBLamassuSHA256PreimageCircuit::<_, PrimeOrder>::new(&srs, &params, preimage_bits);
 
             println!("creating {} proofs", samples);
             let start = Instant::now();
@@ -227,7 +208,12 @@ fn main() {
             }
             let proof_time = start.elapsed();
             println!("done in {:?}", proof_time);
-            println!("average time per proof: {:?}", proof_time / samples as u32);
+            let proof_avg = proof_time / samples as u32;
+            println!("average time per proof: {:?}", proof_avg);
+            writeln!(file, "proof:\t\t\t{:?}", proof_avg).unwrap_or_else(|err| {
+                eprintln!("Problem writing to proof avg to file: {err}");
+                process::exit(1);
+            });
 
             println!("creating advice");
             let start = Instant::now();
@@ -250,7 +236,7 @@ fn main() {
             );
             println!("done in {:?}", start.elapsed());
 
-            let verify_time = {
+            let verify_avg = {
                 let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
                     AdaptorCircuit(circuit.clone()),
                     &srs,
@@ -267,11 +253,16 @@ fn main() {
                 }
                 let verify_time = start.elapsed();
                 println!("done in {:?}", verify_time);
-                println!("average time per proof: {:?}", verify_time / samples as u32);
-                verify_time / samples as u32
+                let verify_avg = verify_time / samples as u32;
+                println!("average time per proof: {:?}", verify_avg);
+                verify_avg
             };
+            writeln!(file, "verify:\t\t{:?}", verify_avg).unwrap_or_else(|err| {
+                eprintln!("Problem writing to verify avg to file: {err}");
+                process::exit(1);
+            });
 
-            {
+            let helped_verify_margin = {
                 let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
                     AdaptorCircuit(circuit.clone()),
                     &srs,
@@ -289,11 +280,19 @@ fn main() {
                 }
                 let verify_advice_time = start.elapsed();
                 println!("done in {:?}", verify_advice_time);
+                let helped_verify_margin = (verify_advice_time - verify_avg) / (samples - 1) as u32;
                 println!(
                     "marginal cost of helped verifier: {:?}",
-                    (verify_advice_time - verify_time) / (samples - 1) as u32
+                    helped_verify_margin
                 );
-            }
+                helped_verify_margin
+            };
+            writeln!(file, "helped verify:\t{:?}", helped_verify_margin).unwrap_or_else(|err| {
+                eprintln!("Problem writing to helped verify margin to file: {err}");
+                process::exit(1);
+            });
+        } else {
+            unreachable!("circuit_name should always be either pedersen or sha256");
         }
     }
 }

@@ -1,11 +1,29 @@
-use crate::util::be_opt_vec_to_jubjub_scalar;
+use crate::srs::SRS;
+use crate::util::{be_opt_vec_to_jubjub_scalar, dusk_to_sapling, le_bytes_to_le_bits};
 use crate::{Statement, WitnessScalar};
-use dusk_jubjub::JubJubScalar;
+use dusk_bytes::Serializable;
+use dusk_jubjub::{JubJubScalar, GENERATOR_EXTENDED};
+use sapling_crypto::pedersen_hash;
+use sapling_crypto::jubjub::{JubjubBls12,PrimeOrder};
+use pairing::bls12_381::Bls12;
 
+/***** basic Pedersen preimage circuit *****/
 // 'a is a named lifetime (borrowed pointers are required to have lifetimes in impls)
 pub struct PedersenHashPreimageCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> {
     pub preimage: Vec<Option<bool>>,
     pub params: &'a E::Params,
+}
+impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> PedersenHashPreimageCircuit<'a, E> {
+    pub fn new(
+        params: &'a JubjubBls12,
+        preimage_bits: usize,
+    ) -> PedersenHashPreimageCircuit<'a, Bls12> {
+        let preimage_opt = vec![Some(true); preimage_bits];
+        PedersenHashPreimageCircuit { 
+            preimage: preimage_opt,
+            params: &params,
+        }
+    }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a> Statement
     for PedersenHashPreimageCircuit<'a, E>
@@ -63,10 +81,11 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine> bellman::Circuit<E>
     }
 }
 
-// Language for Pedersen preimage OR cpk shift
+/***** Lamassu (SE) Pedersen preimage circuit *****/
+// lang = { preimage OR cpk shift }
 use sapling_crypto::circuit::ecc::EdwardsPoint;
 use sapling_crypto::jubjub::edwards::Point;
-pub struct PedersenHashPreimageORShiftCircuit<
+pub struct LamassuPedersenHashPreimageCircuit<
     'a,
     E: sapling_crypto::jubjub::JubjubEngine + 'a,
     Subgroup,
@@ -80,11 +99,51 @@ pub struct PedersenHashPreimageORShiftCircuit<
     pub preimage: Vec<Option<bool>>, // represents a Jubjub point
     pub shift: Vec<Option<bool>>,    // represents a Jubjub scalar
 }
+impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> LamassuPedersenHashPreimageCircuit<'a, E, Subgroup> {
+    pub fn new(
+        srs: &'a SRS<E>,
+        params: &'a JubjubBls12,
+        preimage_bits: usize,
+    ) -> LamassuPedersenHashPreimageCircuit<'a, Bls12, PrimeOrder> {
+        // hash preimage (underlying witness)
+        let preimage_bool = vec![true; preimage_bits];
+        let preimage_opt = preimage_bool
+            .iter()
+            .map(|x| Some(*x))
+            .collect::<Vec<Option<bool>>>();
+        let preimage_chunks_dusk = be_opt_vec_to_jubjub_scalar(&preimage_opt)
+            .iter()
+            .map(|scalar| GENERATOR_EXTENDED * scalar)
+            .collect::<Vec<_>>();
+        let preimage_chunk_pts = preimage_chunks_dusk
+            .iter()
+            .map(|chunk| dusk_to_sapling(*chunk))
+            .collect::<Vec<_>>();
+
+        // compute digest
+        let digest = pedersen_hash::pedersen_hash(
+            pedersen_hash::Personalization::NoteCommitment,
+            preimage_bool,
+            params,
+        );
+
+        LamassuPedersenHashPreimageCircuit {
+            params: &params,
+            // x' = (x, cpk, cpk_o)
+            digest: digest,
+            cpk: dusk_to_sapling(*srs.cpk.as_ref()),
+            cpk_o: dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED),
+            // w' = (w, shift)
+            preimage: preimage_opt,
+            shift: vec![Some(true); JubJubScalar::SIZE], // garbage shift (shift is unknown to honest prover)
+        }
+    }
+}
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
-    for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
+    for LamassuPedersenHashPreimageCircuit<'a, E, Subgroup>
 {
     fn clone(&self) -> Self {
-        PedersenHashPreimageORShiftCircuit {
+        LamassuPedersenHashPreimageCircuit {
             params: self.params,
             digest: self.digest.clone(),
             cpk: self.cpk.clone(),
@@ -95,7 +154,7 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Statement
-    for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
+    for LamassuPedersenHashPreimageCircuit<'a, E, Subgroup>
 {
     // fn get_statement<T>(&self) -> Point<E, PrimeOrder> {
     //     self.digest
@@ -105,14 +164,14 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Statement
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> WitnessScalar
-    for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
+    for LamassuPedersenHashPreimageCircuit<'a, E, Subgroup>
 {
     fn get_witness_scalar(&self) -> Vec<JubJubScalar> {
         be_opt_vec_to_jubjub_scalar(&self.preimage)
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
-    for PedersenHashPreimageORShiftCircuit<'a, E, Subgroup>
+    for LamassuPedersenHashPreimageCircuit<'a, E, Subgroup>
 {
     fn synthesize<CS: bellman::ConstraintSystem<E>>(
         self,
@@ -205,9 +264,9 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
     }
 }
 
-// Full UC language for Pedersen preimage
-// (i.e., (preimage OR cpk shift) AND ciphertext
-pub struct PedersenHashPreimageUCCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup>
+/***** BB-Lamassu (UC+SE) Pedersen preimage circuit *****/
+// lang = { (preimage OR cpk shift) AND ciphertext }
+pub struct BBLamassuPedersenHashPreimageCircuit<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup>
 {
     pub params: &'a E::Params,
     pub pk: Point<E, Subgroup>,
@@ -222,11 +281,78 @@ pub struct PedersenHashPreimageUCCircuit<'a, E: sapling_crypto::jubjub::JubjubEn
     pub omegas: Vec<Vec<Option<bool>>>, // each ciphertext's randomness; represents a (Jubjub) scalar
     pub shift: Vec<Option<bool>>,       // also represents a Jubjub scalar
 }
+impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> BBLamassuPedersenHashPreimageCircuit<'a, E, Subgroup> {
+    pub fn new(
+        srs: &'a SRS<E>,
+        params: &'a JubjubBls12,
+        preimage_bits: usize,
+    ) -> BBLamassuPedersenHashPreimageCircuit<'a, Bls12, PrimeOrder> {
+        // hash preimage (underlying witness)
+        let preimage_bool = vec![true; preimage_bits];
+        let preimage_opt = preimage_bool
+            .iter()
+            .map(|x| Some(*x))
+            .collect::<Vec<Option<bool>>>();
+        let preimage_chunks_dusk = be_opt_vec_to_jubjub_scalar(&preimage_opt)
+            .iter()
+            .map(|scalar| GENERATOR_EXTENDED * scalar)
+            .collect::<Vec<_>>();
+        let preimage_chunk_pts = preimage_chunks_dusk
+            .iter()
+            .map(|chunk| dusk_to_sapling(*chunk))
+            .collect::<Vec<_>>();
+
+        // encrypt the underlying witness (part of UC witness)
+        let mut rands = vec![];
+        let mut rand_le_bits_vec = vec![];
+        let mut rand_le_opt_vec = vec![];
+        let mut cts_sapling = vec![];
+        for i in 0..preimage_chunks_dusk.len() {
+            // randomness
+            let rand = JubJubScalar::random(&mut rand::thread_rng());
+            rands.push(rand);
+
+            let mut buf = [false; JubJubScalar::SIZE * 8];
+            le_bytes_to_le_bits(rand.to_bytes().as_slice(), JubJubScalar::SIZE, &mut buf);
+            rand_le_bits_vec.push(buf);
+
+            let rand_le_opt = buf.iter().map(|x| Some(*x)).collect::<Vec<Option<bool>>>();
+            rand_le_opt_vec.push(rand_le_opt);
+
+            // compute ciphertext
+            let c = srs.pk.encrypt(preimage_chunks_dusk[i], rand);
+            let c_sapling = (dusk_to_sapling(c.gamma()), dusk_to_sapling(c.delta()));
+            cts_sapling.push(c_sapling);
+        }
+
+        // compute digest
+        let digest = pedersen_hash::pedersen_hash(
+            pedersen_hash::Personalization::NoteCommitment,
+            preimage_bool,
+            params,
+        );
+
+        BBLamassuPedersenHashPreimageCircuit {
+            params: &params,
+            pk: dusk_to_sapling(srs.pk.0),
+            // x' = (x, c, cpk, cpk_o)
+            digest: digest,
+            c: cts_sapling,
+            cpk: dusk_to_sapling(*srs.cpk.as_ref()),
+            cpk_o: dusk_to_sapling(dusk_jubjub::GENERATOR_EXTENDED),
+            // w' = (w, omega, shift)
+            preimage: preimage_opt,
+            preimage_pts: preimage_chunk_pts,
+            omegas: rand_le_opt_vec,
+            shift: vec![Some(true); JubJubScalar::SIZE], // garbage shift (shift is unknown to honest prover)
+        }
+    }
+}
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
-    for PedersenHashPreimageUCCircuit<'a, E, Subgroup>
+    for BBLamassuPedersenHashPreimageCircuit<'a, E, Subgroup>
 {
     fn clone(&self) -> Self {
-        PedersenHashPreimageUCCircuit {
+        BBLamassuPedersenHashPreimageCircuit {
             params: self.params,
             pk: self.pk.clone(),
             digest: self.digest.clone(),
@@ -241,21 +367,21 @@ impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Clone
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> Statement
-    for PedersenHashPreimageUCCircuit<'a, E, Subgroup>
+    for BBLamassuPedersenHashPreimageCircuit<'a, E, Subgroup>
 {
     fn get_statement_bytes(&self) -> &[u8] {
         b"TODO NG fake statement instead of hash digest, cpk, cpk_o"
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine + 'a, Subgroup> WitnessScalar
-    for PedersenHashPreimageUCCircuit<'a, E, Subgroup>
+    for BBLamassuPedersenHashPreimageCircuit<'a, E, Subgroup>
 {
     fn get_witness_scalar(&self) -> Vec<JubJubScalar> {
         be_opt_vec_to_jubjub_scalar(&self.preimage)
     }
 }
 impl<'a, E: sapling_crypto::jubjub::JubjubEngine, Subgroup> bellman::Circuit<E>
-    for PedersenHashPreimageUCCircuit<'a, E, Subgroup>
+    for BBLamassuPedersenHashPreimageCircuit<'a, E, Subgroup>
 {
     fn synthesize<CS: bellman::ConstraintSystem<E>>(
         self,

@@ -5,8 +5,11 @@ extern crate sapling_crypto;
 extern crate sonic_ucse;
 
 use pairing::PrimeField;
+use sapling_crypto::jubjub::PrimeOrder;
 use sonic_ucse::circuits::adaptor::AdaptorCircuit;
-use sonic_ucse::circuits::{pedersen::PedersenHashPreimageCircuit, sha256::SHA256PreimageCircuit};
+use sonic_ucse::circuits::{
+    pedersen::LamassuPedersenHashPreimageCircuit, sha256::LamassuSHA256PreimageCircuit,
+};
 use sonic_ucse::{parse_config,usage};
 use sonic_ucse::protocol::*;
 use sonic_ucse::srs::SRS;
@@ -38,7 +41,7 @@ fn main() {
         eprintln!("Problem opening benchmarking file: {err}");
         process::exit(1);
     });
-    writeln!(file, "Sonic for {} with preimage size {} over {} iterations\n{}", 
+    writeln!(file, "Lamassu for {} with preimage size {} over {} iterations\n{}", 
             circuit_name, preimage_bits, samples, 
             "--------------------------------------------------------------"
         ).unwrap_or_else(|err| {
@@ -52,38 +55,39 @@ fn main() {
         let srs_alpha = Fr::from_str("23728792").unwrap();
 
         println!("making srs");
-        let start = Instant::now();
-        let srs = {
-            if preimage_bits == 1024 {
+        let d = {
+            if preimage_bits == 512 {
+                886144
+            }
+            else if preimage_bits == 1024 {
             // SHA256 with 1024 preimage: need larger d for larger circuits
             // not sure how large is needed, so use 4 * wires.len()
             // wires.len() = 337586
-            SRS::<Bls12>::dummy(337586 * 4, srs_x, srs_alpha)
+            337586 * 4
         } else {
-            SRS::<Bls12>::dummy(830564, srs_x, srs_alpha)
-            // SRS::<Bls12>::new(830564, srs_x, srs_alpha)
+            830564
         }};
+        let start = Instant::now();
+        let srs = SRS::<Bls12>::dummy(d, srs_x, srs_alpha);
+        // let srs = SRS::<Bls12>::new(d, srs_x, srs_alpha);
         println!("done in {:?}", start.elapsed());
 
         type ChosenBackend = Permutation3;
         let params = sapling_crypto::jubjub::JubjubBls12::new();
 
         if circuit_name == "pedersen" {
-            let circuit = PedersenHashPreimageCircuit::<Bls12>::new(&params, preimage_bits);
+            // inputs to UC circuit
+            let circuit = LamassuPedersenHashPreimageCircuit::<_, PrimeOrder>::new(&srs, &params, preimage_bits);
 
             println!("creating {} proofs", samples);
             let start = Instant::now();
-            let proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
-                &AdaptorCircuit(circuit.clone()),
-                &srs,
-            )
-            .unwrap();
+            let proof =
+                create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
+                    .unwrap();
             for _ in 0..(samples - 1) {
-                let _proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
-                    &AdaptorCircuit(circuit.clone()),
-                    &srs,
-                )
-                .unwrap();
+                let _proof =
+                    create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
+                        .unwrap();
             }
             let proof_time = start.elapsed();
             println!("done in {:?}", proof_time);
@@ -98,7 +102,7 @@ fn main() {
             let start = Instant::now();
             let advice = create_advice::<Bls12, _, ChosenBackend>(
                 &AdaptorCircuit(circuit.clone()),
-                &proof,
+                &proof.pi,
                 &srs,
             );
             println!("done in {:?}", start.elapsed());
@@ -106,7 +110,7 @@ fn main() {
             println!("creating aggregate for {} proofs", samples);
             let start = Instant::now();
             let proofs: Vec<_> = (0..samples)
-                .map(|_| (proof.clone(), advice.clone()))
+                .map(|_| (proof.pi.clone(), advice.clone()))
                 .collect();
             let aggregate = create_aggregate::<Bls12, _, ChosenBackend>(
                 &AdaptorCircuit(circuit.clone()),
@@ -114,6 +118,24 @@ fn main() {
                 &srs,
             );
             println!("done in {:?}", start.elapsed());
+
+            {
+                let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
+                    AdaptorCircuit(circuit.clone()),
+                    &srs,
+                )
+                .unwrap();
+                println!("verifying 1 proof without advice");
+                let start = Instant::now();
+                {
+                    for _ in 0..1 {
+                        verifier.add_proof(&proof, &[], |_, _| None);
+                    }
+                    // Note: just running verification on the proof itself (not crs)
+                    assert_eq!(verifier.check_all(), true); // TODO
+                }
+                println!("done in {:?}", start.elapsed());
+            }
 
             let verify_avg = {
                 let mut verifier = MultiVerifier::<Bls12, _, ChosenBackend>::new(
@@ -125,7 +147,7 @@ fn main() {
                 let start = Instant::now();
                 {
                     for _ in 0..samples {
-                        verifier.add_underlying_proof(&proof, &[], |_, _| None);
+                        verifier.add_proof(&proof, &[], |_, _| None);
                     }
                     assert!(verifier.check_all()); // TODO
                 }
@@ -170,21 +192,19 @@ fn main() {
             });
         } else if circuit_name == "sha256" {
             // DO SHA256
-            let circuit = SHA256PreimageCircuit::new(preimage_bits);
+            // inputs to circuit
+            let circuit =
+                LamassuSHA256PreimageCircuit::<_, PrimeOrder>::new(&srs, &params, preimage_bits);
 
             println!("creating {} proofs", samples);
             let start = Instant::now();
-            let proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
-                &AdaptorCircuit(circuit.clone()),
-                &srs,
-            )
-            .unwrap();
+            let proof =
+                create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
+                    .unwrap();
             for _ in 0..(samples - 1) {
-                let _proof = create_underlying_proof::<Bls12, _, ChosenBackend>(
-                    &AdaptorCircuit(circuit.clone()),
-                    &srs,
-                )
-                .unwrap();
+                let _proof =
+                    create_proof::<Bls12, _, ChosenBackend>(&AdaptorCircuit(circuit.clone()), &srs)
+                        .unwrap();
             }
             let proof_time = start.elapsed();
             println!("done in {:?}", proof_time);
@@ -199,7 +219,7 @@ fn main() {
             let start = Instant::now();
             let advice = create_advice::<Bls12, _, ChosenBackend>(
                 &AdaptorCircuit(circuit.clone()),
-                &proof,
+                &proof.pi,
                 &srs,
             );
             println!("done in {:?}", start.elapsed());
@@ -207,7 +227,7 @@ fn main() {
             println!("creating aggregate for {} proofs", samples);
             let start = Instant::now();
             let proofs: Vec<_> = (0..samples)
-                .map(|_| (proof.clone(), advice.clone()))
+                .map(|_| (proof.pi.clone(), advice.clone()))
                 .collect();
             let aggregate = create_aggregate::<Bls12, _, ChosenBackend>(
                 &AdaptorCircuit(circuit.clone()),
@@ -226,7 +246,7 @@ fn main() {
                 let start = Instant::now();
                 {
                     for _ in 0..samples {
-                        verifier.add_underlying_proof(&proof, &[], |_, _| None);
+                        verifier.add_proof(&proof, &[], |_, _| None);
                     }
                     // assert!(verifier.check_all()); // TODO
                     let _verif = verifier.check_all(); // TODO NG

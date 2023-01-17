@@ -13,6 +13,59 @@ pub mod synthesis;
 pub mod usig;
 pub mod util;
 
+pub fn usage() {
+    println!("Usage: cargo run --example [example name] -- [pedersen | sha256] [preimage bitsize] [samples]");
+}
+pub fn parse_config(args: &[String]) -> Result<(&str, usize, usize), &'static str> {
+    // default values
+    let mut circuit_name = "pedersen";
+    let mut preimage_bits_num = 48;
+    let mut samples_num = 5;
+    if args.len() != 1 && args.len() != 4 {
+        return Err("improper number of arguments");
+    }
+    if args.len() == 4 {
+        circuit_name = &args[1];
+        let preimage_bits = &args[2];
+        preimage_bits_num = match circuit_name {
+            "pedersen" =>
+                match preimage_bits.parse() {
+                    Ok(48) => { 48 },
+                    Ok(384) => { 384 },
+                    Ok(_) => {
+                        return Err("Pedersen preimage bitsize must be 48 or 384");
+                    },
+                    Err(_) => {
+                        return Err("second argument must be an integer");
+                    }
+                },
+            "sha256" =>
+                match preimage_bits.parse() {
+                    Ok(512) => { 512 },
+                    Ok(1024) => { 1024 },
+                    Ok(2048) => { 2048 },
+                    Ok(_) => {
+                        return Err("SHA256 preimage bitsize must be 512, 1024, or 2048");
+                    },
+                    Err(_) => {
+                        return Err("second argument must be an integer");
+                    }
+                },
+            _ => { return Err("invalid circuit name"); },
+        };
+        let samples = &args[3];
+        samples_num = match samples.parse() {
+            // options should be 5, 10
+            Ok(n) => { n },
+            Err(_) => {
+                return Err("third argument must be an integer");
+            }
+        };
+    }
+
+    Ok((circuit_name, preimage_bits_num, samples_num))
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum SynthesisError {
     AssignmentMissing,
