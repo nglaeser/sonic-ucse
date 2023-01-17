@@ -1,6 +1,8 @@
 # UC SE Sonic
 
-This crate is a UC-secure and simulation extractable (SE) version of [Sonic](https://github.com/ebfull/sonic) [1], an _updatable_ zk-SNARK protocol. We do this by using a generic transformation (_BB-Lamassu_ [3]) that turns any sound NIZK into a _simulation extractable_ NIZK -- in a UC-secure way that works in the updatable setting. 
+This crate is a UC-secure and simulation extractable (SE) version of [Sonic](https://github.com/ebfull/sonic) [1], an _updatable_ zk-SNARK protocol. We do this by using a generic transformation (**BB-Lamassu** [3]) that turns any sound NIZK into a _simulation extractable_ NIZK &mdash; in a UC-secure way and compatible with the updatable setting. 
+
+**THIS IMPLEMENTATION IS A PROTOTYPE AND IS FULL OF BUGS, DO NOT USE IT IN PRODUCTION**
 
 ## Lamassu
 
@@ -36,27 +38,31 @@ and the proof is a tuple (&sigma;, **c**, &pi;, &sigma;<sub>OT</sub>, pk<sub>&el
 - **c &leftarrow; UP.Enc(pk<sub>up</sub>, w; &omega;)**: an _updatable encryption_ ([ElGamal over Jubjub](https://github.com/nglaeser/jubjub-elgamal)) of the base scheme's witness, and
 - **&pi; &leftarrow; &Pi;.P(crs<sub>up</sub>, (x':=(x,c,&perp;), w':=(w,&omega;,&perp;))**: the NIZK is now for the BB-Lamassu language, still using the base protocol ([Sonic](https://github.com/ebfull/sonic)) and the base statement/witness pair with the left branch of the OR.
 
-## References
+### References
 
-[1] Mary Maller, Sean Bowe, Markulf Kohlweiss, and Sarah Meiklejohn. _Sonic: Zero-Knowledge SNARKs from Linear-Size Universal and Updateable Structured Reference Strings_. Cryptology ePrint Archive paper [2019/099](https://eprint.iacr.org/2019/099).  
-[2] Behzad Abdolmaleki, Sebastian Ramacher, and Daniel Slamanig. _Lift-and-Shift: Obtaining Simulation Extractable Subversion and Updatable SNARKs Generically_. Cryptology ePrint Archive paper [2020/062](https://eprint.iacr.org/2020/062).  
+[1] Mary Maller, Sean Bowe, Markulf Kohlweiss, and Sarah Meiklejohn. _Sonic: Zero-Knowledge SNARKs from Linear-Size Universal and Updateable Structured Reference Strings_. Cryptology ePrint Archive paper [2019/099](https://eprint.iacr.org/2019/099).
+
+[2] Behzad Abdolmaleki, Sebastian Ramacher, and Daniel Slamanig. _Lift-and-Shift: Obtaining Simulation Extractable Subversion and Updatable SNARKs Generically_. Cryptology ePrint Archive paper [2020/062](https://eprint.iacr.org/2020/062).
+
 [3] Behzad Abdolmaleki, Noemi Glaeser, Sebastian Ramacher, and Daniel Slamanig. _Universally Composable NIZKs: Circuit Succinct, Non-Malleable and CRS-Updatable_. In submission.
 
 ---
 
-**THIS IMPLEMENTATION IS A PROTOTYPE AND IS FULL OF BUGS, DO NOT USE IT IN PRODUCTION**
-
 ## Usage
+Compile and run the examples with with `cargo run --example [example name] [pedersen|sha256] [witness bitsize] [sample size]`. The witness bitsize options depend on the statement to prove: 48 or 384 for Pedersen and 512, 1024, or 2048 for SHA256. The default arguments are `pedersen` with witness bitsize `48` and sample size `5`.
 
+Example:
 ```
-cargo build
-
-# run the UC-SE NIZK scheme (BB-Lamassu)
-cargo run --example bb-lamassu
+# BB-Lamassu to prove knowledge of a 48-bit Pedersen hash preimage (avg of 10)
+cargo run --example bb-lamassu pedersen 48 10
 
 # compare to previous work
-cargo run --example sonic
+cargo run --example sonic pedersen 48 10
+cargo run --example lamassu pedersen 48 10
+```
 
+There are also tests:
+```
 # test the new building blocks
 cargo test --test uc-se
 
@@ -64,9 +70,11 @@ cargo test --test uc-se
 cargo test
 ```
 
+One can also compile the code (without running anything) with `cargo build`.
+
 Because of some of the dependencies, we need to use the nightly toolchain. This should be taken care of by the `rust-toolchain.toml` file but can also be done manually by replacing calls to `cargo` with `cargo +nightly` above.
 
-Documentation:
+### Documentation
 ```
 cargo doc --open
 ```
