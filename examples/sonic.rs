@@ -52,17 +52,21 @@ fn main() {
         let srs_alpha = Fr::from_str("23728792").unwrap();
 
         println!("making srs");
-        let start = Instant::now();
-        let srs = {
-            if preimage_bits == 1024 {
+        let d = {
+            if preimage_bits == 512 {
+                886144
+            }
+            else if preimage_bits == 1024 {
             // SHA256 with 1024 preimage: need larger d for larger circuits
             // not sure how large is needed, so use 4 * wires.len()
             // wires.len() = 337586
-            SRS::<Bls12>::dummy(337586 * 4, srs_x, srs_alpha)
+            337586 * 4
         } else {
-            SRS::<Bls12>::dummy(830564, srs_x, srs_alpha)
-            // SRS::<Bls12>::new(830564, srs_x, srs_alpha)
+            830564
         }};
+        let start = Instant::now();
+        let srs = SRS::<Bls12>::dummy(d, srs_x, srs_alpha);
+        // let srs = SRS::<Bls12>::new(d, srs_x, srs_alpha);
         println!("done in {:?}", start.elapsed());
 
         type ChosenBackend = Permutation3;
