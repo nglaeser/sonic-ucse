@@ -60,9 +60,14 @@ fn main() {
             // SHA256 with 1024 preimage: need larger d for larger circuits
             // not sure how large is needed, so use 4 * wires.len()
             // wires.len() = 337586
-            337586 * 4
-        } else {
-            830564
+                337586 * 4
+            }
+            else if preimage_bits == 2048 {
+                // guess
+                337586 * 8
+            }
+            else {
+                830564
         }};
         let start = Instant::now();
         let srs = SRS::<Bls12>::dummy(d, srs_x, srs_alpha);
