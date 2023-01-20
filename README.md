@@ -44,7 +44,7 @@ and the proof is a tuple (&sigma;, **c**, &pi;, &sigma;<sub>OT</sub>, pk<sub>&el
 
 [2] Behzad Abdolmaleki, Sebastian Ramacher, and Daniel Slamanig. _Lift-and-Shift: Obtaining Simulation Extractable Subversion and Updatable SNARKs Generically_. Cryptology ePrint Archive paper [2020/062](https://eprint.iacr.org/2020/062).
 
-[3] Behzad Abdolmaleki, Noemi Glaeser, Sebastian Ramacher, and Daniel Slamanig. _Universally Composable NIZKs: Circuit Succinct, Non-Malleable and CRS-Updatable_. In submission.
+[3] _Universally Composable NIZKs: Circuit Succinct, Non-Malleable and CRS-Updatable_. In submission.
 
 ---
 
