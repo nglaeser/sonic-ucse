@@ -6,3 +6,8 @@ Cargo.lock
 
 # benchmarks
 bench.txt
+bench/benchmarks.jpg
+bench/benchmarks.png
+.ipynb_checkpoints
+
+.DS_Store
