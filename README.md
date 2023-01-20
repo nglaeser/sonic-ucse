@@ -16,7 +16,7 @@ to
 
 with the proof being a tuple (&sigma;, &pi;, &sigma;<sub>OT</sub>, pk<sub>&ell;</sub>, pk<sub>OT</sub>), where
 
-- **&sigma; &leftarrow; &Sigma;.Sign(sk<sub>&ell;</sub>, pk<sub>OT</sub>)**: an _updatable signature_ ([Schnorr over Jubjub](https://github.com/nglaeser/jubjub-schnorr)) on a one-time signature public key, 
+- **&sigma; &leftarrow; &Sigma;.Sign(sk<sub>&ell;</sub>, pk<sub>OT</sub>)**: an _updatable signature_ ([Schnorr over Jubjub](https://anonymous.4open.science/r/jubjub-schnorr/) on a one-time signature public key, 
 - **&pi; &leftarrow; &Pi;.P(crs<sub>up</sub>, (x':=(x,&perp;), w':=(w,&perp;))**: a NIZK for the _new_ language using the base protocol ([Sonic](https://github.com/ebfull/sonic)) and the base statement/witness pair (i.e., using the left branch of the OR),
 - **&sigma;<sub>OT</sub> &leftarrow; &Sigma;<sub>OT</sub>.Sign(sk<sub>OT</sub>, &pi; || x || c || pk<sub>&ell;</sub> || &sigma;)**: a strongly-unforgeable one-time signature (sOTS) ([schnorrkel](https://crates.io/crates/schnorrkel)) on the above NIZK, the base statement x, and the above updatable ciphertext, updatable encryption public key, and updatable signature, using the secret key corresponding to the above one-time public key, and
 - **pk<sub>&ell;</sub>, pk<sub>OT</sub>**: the public keys of the updatable and one-time signature schemes.
@@ -35,7 +35,7 @@ to
 
 and the proof is a tuple (&sigma;, **c**, &pi;, &sigma;<sub>OT</sub>, pk<sub>&ell;</sub>, pk<sub>OT</sub>) consisting of the elements from before plus:
 
-- **c &leftarrow; UP.Enc(pk<sub>up</sub>, w; &omega;)**: an _updatable encryption_ ([ElGamal over Jubjub](https://github.com/nglaeser/jubjub-elgamal)) of the base scheme's witness, and
+- **c &leftarrow; UP.Enc(pk<sub>up</sub>, w; &omega;)**: an _updatable encryption_ ([ElGamal over Jubjub](https://anonymous.4open.science/r/jubjub-elgamal/)) of the base scheme's witness, and
 - **&pi; &leftarrow; &Pi;.P(crs<sub>up</sub>, (x':=(x,c,&perp;), w':=(w,&omega;,&perp;))**: the NIZK is now for the BB-Lamassu language, still using the base protocol ([Sonic](https://github.com/ebfull/sonic)) and the base statement/witness pair with the left branch of the OR.
 
 ### References
