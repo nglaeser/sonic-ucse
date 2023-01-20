@@ -6,3 +6,4 @@ Cargo.lock
 
 # benchmarks
 bench.txt
+bench-ccs23/

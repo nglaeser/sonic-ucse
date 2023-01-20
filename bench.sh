@@ -7,9 +7,11 @@ if [ -f $bench ]; then
 fi
 
 # benchmarks
-ped_iters=10
-sha_iters=5
+ped_iters=20
+sha_iters=10
 schemes="sonic lamassu bb-lamassu"
+ped_bitsizes="48 384"
+sha_bitsizes="512 1024 2048"
 for scheme in $schemes
 do
     case $scheme in
@@ -23,6 +25,10 @@ do
             header="************************** BB-Lamassu ***************************"
             ;;
     esac
+    if [ -z "$ped_bitsizes" ] && [ -z $sha_bitsizes ]; then
+        # if both ped and sha bitsizes to run are empty, skip to next scheme
+        continue
+    fi
 
     ### header
     set -f
@@ -32,18 +38,24 @@ do
     set +f
 
     ### Pedersen: 48, 384
-    echo "_____________________________Pedersen____________________________" >> $bench
-    for bitsize in 48 384
-    do
-        cargo run --example $scheme pedersen $bitsize $ped_iters
-        echo >> $bench
-    done
+    if [ -n "$ped_bitsizes" ]; then
+        # ped_bitsizes is not empty
+        echo "_____________________________Pedersen____________________________" >> $bench
+        for bitsize in $ped_bitsizes
+        do
+            cargo run -r --example $scheme pedersen $bitsize $ped_iters
+            echo >> $bench
+        done
+    fi
 
     ### SHA256: 512, 1024, 2048?
-    echo "______________________________SHA256_____________________________" >> $bench
-    for bitsize in 512 1024 #2048
-    do
-        cargo run --example $scheme sha256 $bitsize $sha_iters
-        echo >> $bench
-    done
+    if [ -n "$sha_bitsizes" ]; then
+        # sha_bitsizes is not empty
+        echo "______________________________SHA256_____________________________" >> $bench
+        for bitsize in $sha_bitsizes
+        do
+            cargo run -r --example $scheme sha256 $bitsize $sha_iters
+            echo >> $bench
+        done
+    fi
 done
