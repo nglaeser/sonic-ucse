@@ -44,21 +44,21 @@ and the proof is a tuple (&sigma;, **c**, &pi;, &sigma;<sub>OT</sub>, pk<sub>&el
 
 [2] Behzad Abdolmaleki, Sebastian Ramacher, and Daniel Slamanig. _Lift-and-Shift: Obtaining Simulation Extractable Subversion and Updatable SNARKs Generically_. Cryptology ePrint Archive paper [2020/062](https://eprint.iacr.org/2020/062).
 
-[3] _Universally Composable NIZKs: Circuit Succinct, Non-Malleable and CRS-Updatable_. In submission.
+[3] _Universally Composable NIZKs: Circuit Succinct, Non-Malleable and CRS-Updatable_. Cryptology ePrint Archive paper [2023/097](https://eprint.iacr.org/2023/097).
 
 ---
 
 ## Usage
-Compile and run the examples with with `cargo run --example [example name] [pedersen|sha256] [witness bitsize] [sample size]`. The witness bitsize options depend on the statement to prove: 48 or 384 for Pedersen and 512, 1024, or 2048 for SHA256. The default arguments are `pedersen` with witness bitsize `48` and sample size `5`.
+Compile and run the examples with with `cargo run -r --example [example name] [pedersen|sha256] [witness bitsize] [sample size]`. The witness bitsize options depend on the statement to prove: 48 or 384 for Pedersen and 512, 1024, or 2048 for SHA256. The default arguments are `pedersen` with witness bitsize `48` and sample size `5`.
 
 Example:
 ```
 # BB-Lamassu to prove knowledge of a 48-bit Pedersen hash preimage (avg of 10)
-cargo run --example bb-lamassu pedersen 48 10
+cargo run -r --example bb-lamassu pedersen 48 10
 
 # compare to previous work
-cargo run --example sonic pedersen 48 10
-cargo run --example lamassu pedersen 48 10
+cargo run -r --example sonic pedersen 48 10
+cargo run -r --example lamassu pedersen 48 10
 ```
 
 There are also tests:
